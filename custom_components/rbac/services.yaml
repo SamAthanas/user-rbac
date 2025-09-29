@@ -1,0 +1,115 @@
+get_user_config:
+  name: Get user configuration
+  description: Get the access control configuration for a specific user
+  fields:
+    user_id:
+      name: User ID
+      description: The user ID to get the configuration for
+      required: true
+      selector:
+        text:
+
+reload_config:
+  name: Reload configuration
+  description: Reload the access control configuration from the YAML file
+  fields: {}
+
+list_users:
+  name: List users
+  description: List all configured users and their roles
+  fields: {}
+
+add_user:
+  name: Add user
+  description: Add a user to the access control configuration (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to add to RBAC
+      required: true
+      selector:
+        person:
+    role:
+      name: Role
+      description: The role to assign to the user
+      required: true
+      selector:
+        select:
+          options:
+            - guest
+            - user
+            - admin
+            - super_admin
+
+remove_user:
+  name: Remove user
+  description: Remove a user from the access control configuration (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to remove from RBAC
+      required: true
+      selector:
+        person:
+
+update_user_role:
+  name: Update user role
+  description: Update a user's role in the access control configuration (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to update their role
+      required: true
+      selector:
+        person:
+    role:
+      name: Role
+      description: The new role to assign to the user
+      required: true
+      selector:
+        select:
+          options:
+            - guest
+            - user
+            - admin
+            - super_admin
+
+add_user_restriction:
+  name: Add user restriction
+  description: Add domain restrictions for a user (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to add restrictions for
+      required: true
+      selector:
+        person:
+    domain:
+      name: Domain
+      description: The service domain to restrict
+      required: true
+      selector:
+        text:
+    services:
+      name: Services
+      description: List of services to restrict
+      required: true
+      selector:
+        object:
+
+remove_user_restriction:
+  name: Remove user restriction
+  description: Remove domain restrictions for a user (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to remove restrictions for
+      required: true
+      selector:
+        person:
+    domain:
+      name: Domain
+      description: The service domain to remove restrictions from
+      required: true
+      selector:
+        text:

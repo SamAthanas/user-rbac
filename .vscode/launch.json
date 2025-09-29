@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Deploy to Home Assistant",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/deploy.sh",
+            "runtimeExecutable": "/bin/bash",
+            "console": "integratedTerminal",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+}
