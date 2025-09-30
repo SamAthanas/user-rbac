@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'preact/hooks';
-import { Modal, Form, Input, Button, Space, Row, Col, Select, InputNumber, Switch, Divider, Typography } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Modal, Form, Input, Button, Space, Row, Col, Select, InputNumber, Switch, Divider, Typography, notification, Dropdown, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, CheckOutlined, CloseOutlined, ExclamationOutlined, ToolOutlined, CodeOutlined, DownOutlined } from '@ant-design/icons';
+import CodeMirror from '@uiw/react-codemirror';
+import { javascript } from '@codemirror/lang-javascript';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -21,6 +23,13 @@ export function RoleEditModal({
   const [domainRestrictions, setDomainRestrictions] = useState([]);
   const [entityRestrictions, setEntityRestrictions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [templateTestResult, setTemplateTestResult] = useState(null); // null, 'loading', 'true', 'false', 'error'
+  const [templateTestError, setTemplateTestError] = useState('');
+  const [templateValue, setTemplateValue] = useState('');
+  const [templateEvaluatedValue, setTemplateEvaluatedValue] = useState(null);
+  const [currentUserEntity, setCurrentUserEntity] = useState(null);
+  const [showDomainSelects, setShowDomainSelects] = useState({});
+  const [showEntitySelects, setShowEntitySelects] = useState({});
 
   useEffect(() => {
     if (visible && roleConfig) {
@@ -28,7 +37,6 @@ export function RoleEditModal({
       form.setFieldsValue({
         description: roleConfig.description || '',
         admin: roleConfig.admin || false,
-        template: roleConfig.template || '',
         fallbackRole: roleConfig.fallbackRole || '',
         domains: roleConfig.permissions?.domains || {},
         entities: roleConfig.permissions?.entities || {}
@@ -60,6 +68,25 @@ export function RoleEditModal({
       setEntityRestrictions(entityRestrictions);
       setShowTemplate(!!roleConfig.template);
       setIsAdmin(roleConfig.admin || false);
+      setTemplateTestResult(null);
+      setTemplateTestError('');
+      setTemplateValue(roleConfig.template || '');
+      setTemplateEvaluatedValue(null);
+      
+      // Initialize show states for selects based on existing services
+      const domainShowStates = {};
+      const entityShowStates = {};
+      
+      domainRestrictions.forEach((restriction, index) => {
+        domainShowStates[index] = restriction.services.length > 0;
+      });
+      
+      entityRestrictions.forEach((restriction, index) => {
+        entityShowStates[index] = restriction.services.length > 0;
+      });
+      
+      setShowDomainSelects(domainShowStates);
+      setShowEntitySelects(entityShowStates);
     } else if (visible) {
       // New role
       form.resetFields();
@@ -67,8 +94,23 @@ export function RoleEditModal({
       setEntityRestrictions([]);
       setShowTemplate(false);
       setIsAdmin(false);
+      setTemplateTestResult(null);
+      setTemplateTestError('');
+      setTemplateValue('');
+      setTemplateEvaluatedValue(null);
+      setShowDomainSelects({});
+      setShowEntitySelects({});
     }
   }, [visible, roleConfig, form]);
+
+  // Load current user entity when modal opens
+  useEffect(() => {
+    if (visible) {
+      getCurrentUserEntity().then(entity => {
+        setCurrentUserEntity(entity);
+      });
+    }
+  }, [visible]);
 
   const handleSave = async () => {
     try {
@@ -100,8 +142,8 @@ export function RoleEditModal({
       };
       
       // Add template if provided
-      if (showTemplate && values.template) {
-        roleData.template = values.template;
+      if (showTemplate && templateValue) {
+        roleData.template = templateValue;
         if (values.fallbackRole) {
           roleData.fallbackRole = values.fallbackRole;
         }
@@ -120,11 +162,27 @@ export function RoleEditModal({
   };
 
   const addDomainRestriction = () => {
+    const newIndex = domainRestrictions.length;
     setDomainRestrictions([...domainRestrictions, { domain: '', services: [] }]);
+    setShowDomainSelects({ ...showDomainSelects, [newIndex]: false });
   };
 
   const removeDomainRestriction = (index) => {
     setDomainRestrictions(domainRestrictions.filter((_, i) => i !== index));
+    // Clean up show state for removed restriction
+    const newShowStates = { ...showDomainSelects };
+    delete newShowStates[index];
+    // Reindex remaining states
+    const reindexedStates = {};
+    Object.keys(newShowStates).forEach(key => {
+      const keyIndex = parseInt(key);
+      if (keyIndex > index) {
+        reindexedStates[keyIndex - 1] = newShowStates[key];
+      } else if (keyIndex < index) {
+        reindexedStates[keyIndex] = newShowStates[key];
+      }
+    });
+    setShowDomainSelects(reindexedStates);
   };
 
   const updateDomainRestriction = (index, field, value) => {
@@ -134,11 +192,27 @@ export function RoleEditModal({
   };
 
   const addEntityRestriction = () => {
+    const newIndex = entityRestrictions.length;
     setEntityRestrictions([...entityRestrictions, { entity: '', services: [] }]);
+    setShowEntitySelects({ ...showEntitySelects, [newIndex]: false });
   };
 
   const removeEntityRestriction = (index) => {
     setEntityRestrictions(entityRestrictions.filter((_, i) => i !== index));
+    // Clean up show state for removed restriction
+    const newShowStates = { ...showEntitySelects };
+    delete newShowStates[index];
+    // Reindex remaining states
+    const reindexedStates = {};
+    Object.keys(newShowStates).forEach(key => {
+      const keyIndex = parseInt(key);
+      if (keyIndex > index) {
+        reindexedStates[keyIndex - 1] = newShowStates[key];
+      } else if (keyIndex < index) {
+        reindexedStates[keyIndex] = newShowStates[key];
+      }
+    });
+    setShowEntitySelects(reindexedStates);
   };
 
   const updateEntityRestriction = (index, field, value) => {
@@ -147,12 +221,174 @@ export function RoleEditModal({
     setEntityRestrictions(updated);
   };
 
+  const showDomainSelect = (index) => {
+    setShowDomainSelects({ ...showDomainSelects, [index]: true });
+  };
+
+  const showEntitySelect = (index) => {
+    setShowEntitySelects({ ...showEntitySelects, [index]: true });
+  };
+
   const getServicesForDomain = (domain) => {
     return services.domains?.[domain] || [];
   };
 
   const getServicesForEntity = (entity) => {
     return services.entities?.[entity] || [];
+  };
+
+  const getHAAuth = async () => {
+    try {
+      const homeAssistantElement = document.querySelector("home-assistant");
+      if (homeAssistantElement && homeAssistantElement.hass) {
+        const hass = homeAssistantElement.hass;
+        if (hass.auth?.data?.access_token) {
+          return { access_token: hass.auth.data.access_token };
+        }
+        if (hass.auth?.access_token) {
+          return { access_token: hass.auth.access_token };
+        }
+      }
+      
+      const auth = localStorage.getItem('hassTokens') || sessionStorage.getItem('hassTokens');
+      if (auth) {
+        const tokens = JSON.parse(auth);
+        return { access_token: tokens.access_token };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Auth error:', error);
+      return null;
+    }
+  };
+
+  const handleOpenHAEditor = () => {
+    // Get the current domain and redirect to HA template editor
+    const currentUrl = window.location.href;
+    const url = new URL(currentUrl);
+    const domain = url.hostname;
+    const protocol = url.protocol;
+    const port = url.port ? `:${url.port}` : '';
+    const editorUrl = `${protocol}//${domain}${port}/developer-tools/template`;
+    window.open(editorUrl, '_blank');
+  };
+
+  const handleClearTemplate = () => {
+    setTemplateValue('');
+    setTemplateTestResult(null);
+    setTemplateEvaluatedValue(null);
+    setTemplateTestError('');
+    form.setFieldsValue({ fallbackRole: '' });
+    setShowTemplate(false); // This will hide the template section and show "Add Template" button
+  };
+
+  const getCurrentUserEntity = async () => {
+    try {
+      const auth = await getHAAuth();
+      if (!auth) return null;
+      
+      const response = await fetch('/api/rbac/current-user', {
+        headers: { 'Authorization': `Bearer ${auth.access_token}` }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        return userData.person_entity_id;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting current user entity:', error);
+      return null;
+    }
+  };
+
+  const handleInsertUserVariable = (type = 'variable') => {
+    if (currentUserEntity) {
+      let templateToInsert = '';
+      
+      switch (type) {
+        case 'variable':
+          templateToInsert = `current_user_str`;
+          break;
+        case 'home':
+          templateToInsert = `states[current_user_str].state == 'home'`;
+          break;
+        case 'away':
+          templateToInsert = `states[current_user_str].state != 'home'`;
+          break;
+        default:
+          templateToInsert = `{{ states(current_user_str) }}`;
+      }
+      
+      const newValue = templateValue + templateToInsert;
+      setTemplateValue(newValue);
+      setTemplateTestResult(null);
+      setTemplateEvaluatedValue(null);
+    }
+  };
+
+  const handleTestTemplate = async () => {
+    try {
+      setTemplateTestResult('loading');
+      setTemplateTestError('');
+      
+      if (!templateValue) {
+        setTemplateTestResult('error');
+        setTemplateTestError('No template to test');
+        notification.error({
+          message: 'Template Test Failed',
+          description: 'Please enter a template first',
+          placement: 'topRight',
+          duration: 3,
+        });
+        return;
+      }
+      
+      const auth = await getHAAuth();
+      if (!auth) {
+        throw new Error('Not authenticated with Home Assistant');
+      }
+      
+      const response = await fetch('/api/rbac/evaluate-template', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${auth.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          template: templateValue
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setTemplateTestResult(data.result ? 'true' : 'false');
+        setTemplateEvaluatedValue(data.evaluated_value);
+      } else {
+        setTemplateTestResult('error');
+        setTemplateTestError(data.error);
+        setTemplateEvaluatedValue(null);
+        notification.error({
+          message: 'Template Evaluation Error',
+          description: data.error,
+          placement: 'topRight',
+          duration: 5,
+        });
+      }
+    } catch (error) {
+      console.error('Error testing template:', error);
+      setTemplateTestResult('error');
+      setTemplateTestError(error.message);
+      setTemplateEvaluatedValue(null);
+      notification.error({
+        message: 'Template Test Failed',
+        description: error.message,
+        placement: 'topRight',
+        duration: 5,
+      });
+    }
   };
 
   return (
@@ -221,23 +457,181 @@ export function RoleEditModal({
           </Button>
         ) : (
           <div>
-            <Form.Item
-              name="template"
-              label="Template"
-              help="Jinja2 template that determines when this role should be active. If false, the fallback role will be used."
-            >
-              <TextArea 
-                rows={4} 
-                placeholder="Enter Jinja2 template (e.g., {{ states('person.john') == 'home' }})"
-              />
-            </Form.Item>
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<CloseOutlined />}
+                    onClick={handleClearTemplate}
+                    style={{
+                      color: '#ff4d4f',
+                      border: 'none',
+                      padding: '4px',
+                      minWidth: 'auto',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#ff4d4f';
+                      e.currentTarget.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#ff4d4f';
+                    }}
+                    title="Clear template settings"
+                  />
+                  <Text strong>Template</Text>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button
+                    size="small"
+                    icon={<ToolOutlined />}
+                    onClick={handleOpenHAEditor}
+                    title="Open Home Assistant Template Editor"
+                  >
+                    HA Editor
+                  </Button>
+                  <Button
+                    size="small"
+                    loading={templateTestResult === 'loading'}
+                    onClick={handleTestTemplate}
+                    type={templateTestResult === 'true' ? 'primary' : templateTestResult === 'false' || templateTestResult === 'error' ? 'default' : 'default'}
+                    style={{
+                      backgroundColor: templateTestResult === 'true' ? '#52c41a' : templateTestResult === 'false' ? '#ff4d4f' : templateTestResult === 'error' ? '#faad14' : undefined,
+                      color: templateTestResult ? 'white' : undefined,
+                      borderColor: templateTestResult === 'true' ? '#52c41a' : templateTestResult === 'false' ? '#ff4d4f' : templateTestResult === 'error' ? '#faad14' : undefined,
+                      minWidth: '100px',
+                    }}
+                    icon={
+                      templateTestResult === 'true' ? <CheckOutlined /> :
+                      templateTestResult === 'false' ? <CloseOutlined /> :
+                      templateTestResult === 'error' ? <ExclamationOutlined /> :
+                      <CodeOutlined />
+                    }
+                  >
+                    {templateTestResult === 'true' ? 'True' : 
+                     templateTestResult === 'false' ? 'False' : 
+                     templateTestResult === 'error' ? 'Error' : 
+                     'Test'}
+                  </Button>
+                </div>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <CodeMirror
+                  value={templateValue}
+                  height="150px"
+                  extensions={[javascript({ jsx: true })]}
+                  onChange={(value) => {
+                    setTemplateValue(value);
+                    setTemplateTestResult(null);
+                    setTemplateEvaluatedValue(null);
+                  }}
+                  placeholder="Enter Jinja2 template (e.g., {{ states(current_user_str) == 'home' }})"
+                  theme="light"
+                  basicSetup={{
+                    lineNumbers: true,
+                    highlightActiveLineGutter: true,
+                    highlightSpecialChars: true,
+                    foldGutter: true,
+                    drawSelection: true,
+                    dropCursor: true,
+                    allowMultipleSelections: true,
+                    indentOnInput: true,
+                    bracketMatching: true,
+                    closeBrackets: true,
+                    autocompletion: true,
+                    rectangularSelection: true,
+                    crosshairCursor: true,
+                    highlightActiveLine: true,
+                    highlightSelectionMatches: true,
+                    closeBracketsKeymap: true,
+                    searchKeymap: true,
+                    foldKeymap: true,
+                    completionKeymap: true,
+                    lintKeymap: true,
+                  }}
+                  style={{
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                  }}
+                />
+                {currentUserEntity && (
+                  <Dropdown
+                    menu={{
+                      items: [
+                        {
+                          key: 'variable',
+                          label: 'Insert user variable',
+                          icon: <CodeOutlined />,
+                          onClick: () => handleInsertUserVariable('variable')
+                        },
+                        {
+                          key: 'home',
+                          label: 'Check if home',
+                          icon: <CheckOutlined />,
+                          onClick: () => handleInsertUserVariable('home')
+                        },
+                        {
+                          key: 'away',
+                          label: 'Check if away',
+                          icon: <CloseOutlined />,
+                          onClick: () => handleInsertUserVariable('away')
+                        }
+                      ]
+                    }}
+                    trigger={['click']}
+                    placement="topRight"
+                  >
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<CodeOutlined />}
+                      style={{
+                        position: 'absolute',
+                        bottom: '8px',
+                        right: '8px',
+                        zIndex: 10,
+                        fontSize: '12px',
+                        height: '28px',
+                        padding: '0 8px',
+                      }}
+                      title="Insert user template snippets"
+                    >
+                      Insert User <DownOutlined />
+                    </Button>
+                  </Dropdown>
+                )}
+              </div>
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                {templateTestResult && templateEvaluatedValue !== null ? (
+                  <>
+                    <strong>Evaluated result:</strong> {String(templateEvaluatedValue)}
+                  </>
+                ) : (
+                  'Jinja2 template that determines when this role should be active. If false, the fallback role will be used.'
+                )}
+              </Text>
+            </div>
             
             <Form.Item
               name="fallbackRole"
               label="Fallback Role"
               help="Role to use when template evaluates to false"
             >
-              <Select placeholder="Select fallback role">
+              <Select 
+                showSearch
+                placeholder="Select fallback role"
+                filterOption={(input, option) =>
+                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                }
+              >
                 {availableRoles.filter(role => role !== roleName).map(role => (
                   <Select.Option key={role} value={role}>{role}</Select.Option>
                 ))}
@@ -250,17 +644,22 @@ export function RoleEditModal({
           </div>
         )}
 
+
         <Divider>Domain Restrictions</Divider>
         
         {domainRestrictions.map((restriction, index) => (
-          <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+          <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }} data-restriction-index={index}>
             <Row gutter={16} align="middle">
               <Col span={10}>
                 <Select
+                  showSearch
                   placeholder="Select domain"
                   value={restriction.domain}
                   onChange={(value) => updateDomainRestriction(index, 'domain', value)}
                   style={{ width: '100%' }}
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                  }
                 >
                   {domains.map(domain => (
                     <Select.Option key={domain} value={domain}>{domain}</Select.Option>
@@ -268,17 +667,52 @@ export function RoleEditModal({
                 </Select>
               </Col>
               <Col span={12}>
-                <Select
-                  mode="multiple"
-                  placeholder="Select services to block (empty = block all)"
-                  value={restriction.services}
-                  onChange={(value) => updateDomainRestriction(index, 'services', value)}
-                  style={{ width: '100%' }}
-                >
-                  {getServicesForDomain(restriction.domain).map(service => (
-                    <Select.Option key={service} value={service}>{service}</Select.Option>
-                  ))}
-                </Select>
+                {!showDomainSelects[index] ? (
+                  <Tooltip title="Add specific service restrictions">
+                    <Button
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() => showDomainSelect(index)}
+                      style={{
+                        width: '100%',
+                        height: '32px',
+                        border: '2px dashed #d9d9d9',
+                        background: 'transparent',
+                        color: '#999',
+                        opacity: 0.6,
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                        e.currentTarget.style.borderColor = '#1890ff';
+                        e.currentTarget.style.color = '#1890ff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '0.6';
+                        e.currentTarget.style.borderColor = '#d9d9d9';
+                        e.currentTarget.style.color = '#999';
+                      }}
+                    >
+                      Restrict Services
+                    </Button>
+                  </Tooltip>
+                ) : (
+                  <Select
+                    mode="multiple"
+                    showSearch
+                    placeholder="Select services to block (empty = block all)"
+                    value={restriction.services}
+                    onChange={(value) => updateDomainRestriction(index, 'services', value)}
+                    style={{ width: '100%' }}
+                    filterOption={(input, option) =>
+                      option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                    }
+                  >
+                    {getServicesForDomain(restriction.domain).map(service => (
+                      <Select.Option key={service} value={service}>{service}</Select.Option>
+                    ))}
+                  </Select>
+                )}
               </Col>
               <Col span={2}>
                 <Button
@@ -304,14 +738,18 @@ export function RoleEditModal({
         <Divider>Entity Restrictions</Divider>
         
         {entityRestrictions.map((restriction, index) => (
-          <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
+          <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }} data-restriction-index={index}>
             <Row gutter={16} align="middle">
               <Col span={10}>
                 <Select
+                  showSearch
                   placeholder="Select entity"
                   value={restriction.entity}
                   onChange={(value) => updateEntityRestriction(index, 'entity', value)}
                   style={{ width: '100%' }}
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                  }
                 >
                   {entities.map(entity => (
                     <Select.Option key={entity} value={entity}>{entity}</Select.Option>
@@ -319,17 +757,52 @@ export function RoleEditModal({
                 </Select>
               </Col>
               <Col span={12}>
-                <Select
-                  mode="multiple"
-                  placeholder="Select services to block (empty = block all)"
-                  value={restriction.services}
-                  onChange={(value) => updateEntityRestriction(index, 'services', value)}
-                  style={{ width: '100%' }}
-                >
-                  {getServicesForEntity(restriction.entity).map(service => (
-                    <Select.Option key={service} value={service}>{service}</Select.Option>
-                  ))}
-                </Select>
+                {!showEntitySelects[index] ? (
+                  <Tooltip title="Add specific service restrictions">
+                    <Button
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() => showEntitySelect(index)}
+                      style={{
+                        width: '100%',
+                        height: '32px',
+                        border: '2px dashed #d9d9d9',
+                        background: 'transparent',
+                        color: '#999',
+                        opacity: 0.6,
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                        e.currentTarget.style.borderColor = '#1890ff';
+                        e.currentTarget.style.color = '#1890ff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '0.6';
+                        e.currentTarget.style.borderColor = '#d9d9d9';
+                        e.currentTarget.style.color = '#999';
+                      }}
+                    >
+                      Restrict Services
+                    </Button>
+                  </Tooltip>
+                ) : (
+                  <Select
+                    mode="multiple"
+                    showSearch
+                    placeholder="Select services to block (empty = block all)"
+                    value={restriction.services}
+                    onChange={(value) => updateEntityRestriction(index, 'services', value)}
+                    style={{ width: '100%' }}
+                    filterOption={(input, option) =>
+                      option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                    }
+                  >
+                    {getServicesForEntity(restriction.entity).map(service => (
+                      <Select.Option key={service} value={service}>{service}</Select.Option>
+                    ))}
+                  </Select>
+                )}
               </Col>
               <Col span={2}>
                 <Button

@@ -1,4 +1,5 @@
-import { Avatar, Typography } from 'antd';
+import { Avatar, Typography, Dropdown, Button } from 'antd';
+import { HomeOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
 
 export function Header({ currentUser = null }) {
   const getUserPicture = (user) => {
@@ -25,6 +26,56 @@ export function Header({ currentUser = null }) {
     return user?.name || 'Unknown User';
   };
 
+  const handleReturnToHA = () => {
+    // Get the current domain and redirect to base domain
+    const currentUrl = window.location.href;
+    const url = new URL(currentUrl);
+    window.location.href = `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/`;
+  };
+
+  const handleReturnToIntegration = () => {
+    // Get the current domain and redirect to RBAC integration page
+    const currentUrl = window.location.href;
+    const url = new URL(currentUrl);
+    const domain = url.hostname;
+    const protocol = url.protocol;
+    const port = url.port ? `:${url.port}` : '';
+    const integrationUrl = `${protocol}//${domain}${port}/config/integrations/integration/rbac`;
+    window.location.href = integrationUrl;
+  };
+
+  const handleLogout = () => {
+    // Clear HA tokens from localStorage and sessionStorage
+    localStorage.removeItem('hassTokens');
+    sessionStorage.removeItem('hassTokens');
+    
+    // Redirect to Home Assistant login
+    const currentUrl = window.location.href;
+    const url = new URL(currentUrl);
+    window.location.href = `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/auth/authorize`;
+  };
+
+  const userMenuItems = [
+    {
+      key: 'home',
+      label: 'Return to Home Assistant',
+      icon: <HomeOutlined />,
+      onClick: handleReturnToHA,
+    },
+    {
+      key: 'integration',
+      label: 'RBAC Integration',
+      icon: <SettingOutlined />,
+      onClick: handleReturnToIntegration,
+    },
+    {
+      key: 'logout',
+      label: 'Log Out',
+      icon: <LogoutOutlined />,
+      onClick: handleLogout,
+    },
+  ];
+
   return (
     <div style={{ 
       background: 'white',
@@ -43,23 +94,45 @@ export function Header({ currentUser = null }) {
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         {currentUser && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Avatar
-              src={getUserPicture(currentUser)}
-              size={48}
+          <Dropdown
+            menu={{ items: userMenuItems }}
+            trigger={['click']}
+            placement="bottomRight"
+          >
+            <div 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f5f5f5';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
             >
-              {getUserDisplayName(currentUser).charAt(0).toUpperCase()}
-            </Avatar>
-            <div>
-              <Typography.Text strong style={{ fontSize: '16px' }}>
-                {getUserDisplayName(currentUser)}
-              </Typography.Text>
-              <br />
-              <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
-                {currentUser.role || 'No role assigned'}
-              </Typography.Text>
+              <Avatar
+                src={getUserPicture(currentUser)}
+                size={48}
+              >
+                {getUserDisplayName(currentUser).charAt(0).toUpperCase()}
+              </Avatar>
+              <div>
+                <Typography.Text strong style={{ fontSize: '16px' }}>
+                  {getUserDisplayName(currentUser)}
+                </Typography.Text>
+                <br />
+                <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                  {currentUser.role || 'No role assigned'}
+                </Typography.Text>
+              </div>
             </div>
-          </div>
+          </Dropdown>
         )}
       </div>
     </div>

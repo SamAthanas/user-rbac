@@ -1328,3 +1328,65 @@ class RBACSensorsView(HomeAssistantView):
         except Exception as e:
             _LOGGER.error(f"Error getting RBAC sensors: {e}")
             return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACTemplateEvaluateView(HomeAssistantView):
+    """View to evaluate a template."""
+    
+    url = "/api/rbac/evaluate-template"
+    name = "api:rbac:evaluate-template"
+    requires_auth = True
+    
+    async def post(self, request):
+        """Evaluate a template."""
+        try:
+            hass = request.app["hass"]
+            user = request["hass_user"]
+            
+            # Get template from request
+            data = await request.json()
+            template_str = data.get("template")
+            
+            if not template_str:
+                return self.json({"error": "No template provided"}, status_code=400)
+            
+            # Import Template
+            from homeassistant.helpers.template import Template
+            
+            # Create and render template with user context
+            template = Template(template_str, hass)
+            
+            # Get current user's person entity for template context
+            user_person_entity = None
+            try:
+                # Look for person entities associated with this user
+                for state in hass.states.async_all():
+                    if state.domain == "person" and state.attributes.get("user_id") == user.id:
+                        user_person_entity = state.entity_id
+                        break
+            except Exception as e:
+                _LOGGER.debug(f"Could not find person entity for user {user.id}: {e}")
+            
+            # Create template context with user variable
+            template_context = {}
+            if user_person_entity:
+                template_context['current_user_str'] = user_person_entity
+            
+            result = template.async_render(template_context, parse_result=False)
+            
+            # Convert result to boolean
+            template_result = bool(result) if result not in [None, "", "False", "false", "0"] else False
+            
+            return self.json({
+                "success": True,
+                "result": template_result,
+                "raw_result": str(result),
+                "evaluated_value": result  # The actual evaluated value from the template
+            })
+            
+        except Exception as e:
+            _LOGGER.error(f"Error evaluating template: {e}")
+            return self.json({
+                "success": False,
+                "error": str(e)
+            }, status_code=200)  # Return 200 so frontend can handle error gracefully
