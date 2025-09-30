@@ -117,15 +117,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     
     # Set up services
     from . import services
-    await services.async_setup_services(hass)    
+    await services.async_setup_services(hass)
     
     # Create RBAC device with config URL entity
-    await _setup_rbac_device(hass)
+    # Skip device setup for YAML-only setup (no config entry)
+    _LOGGER.info("Skipping device setup for YAML-only configuration")
     
     user_count = len(access_config.get("users", {}))
     _LOGGER.info(f"RBAC Middleware initialized successfully with {user_count} configured users")
     # Register API endpoints
-    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView
+    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView
     
     hass.http.register_view(RBACConfigView())
     hass.http.register_view(RBACUsersView())
@@ -133,6 +134,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.http.register_view(RBACEntitiesView())
     hass.http.register_view(RBACServicesView())
     hass.http.register_view(RBACCurrentUserView())
+    hass.http.register_view(RBACSensorsView())
     
     _LOGGER.info("Registered RBAC API endpoints")    
     return True
@@ -142,35 +144,48 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     """Set up the RBAC middleware component from a config entry."""
     _LOGGER.info("Setting up RBAC Middleware from config entry")
     
-    # Just call the main setup function
-    return await async_setup(hass, {})
+    # Get config data from the entry
+    config_data = entry.data if entry.data else {}
+    
+    # Set up the RBAC device with config entry
+    await _setup_rbac_device(hass, entry)
+    
+    # Just call the main setup function with the config data
+    return await async_setup(hass, config_data)
 
 
 
 
-async def _setup_rbac_device(hass: HomeAssistant):
-    """Set up RBAC config URL entity."""
-    _LOGGER.info("Setting up RBAC config URL entity...")
+async def _setup_rbac_device(hass: HomeAssistant, config_entry):
+    """Set up RBAC device and sensors."""
+    _LOGGER.info("Setting up RBAC device and sensors...")
     
-    # Get the base URL from Home Assistant
-    base_url = hass.config.external_url or hass.config.internal_url
-    if not base_url:
-        base_url = f"http://{hass.config.api.host}:{hass.config.api.port}"
-    
-    config_url = f"{base_url}/local/community/rbac/config.html"
-    
-    # Create standalone entity (no device needed)
-    hass.states.async_set(
-        f"sensor.{DOMAIN}_config_url",
-        config_url,
-        {
-            "friendly_name": "RBAC Configuration URL",
-            "icon": "mdi:web",
-            "device_class": "url"
-        }
-    )
-    
-    _LOGGER.info(f"Created RBAC config URL entity: sensor.{DOMAIN}_config_url with URL: {config_url}")
+    try:
+        # Import the proper helpers
+        from homeassistant.helpers import device_registry as dr, entity_registry as er
+        
+        # Create device linked to config entry
+        device_reg = dr.async_get(hass)
+        device = device_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={(DOMAIN, "rbac_middleware")},
+            name="RBAC Middleware",
+            manufacturer="Home Assistant",
+            model="RBAC Integration",
+            sw_version="1.0.0",
+        )
+        
+        # Store device ID for sensor platform to use
+        hass.data[DOMAIN]["device_id"] = device.id
+        
+        # Load the sensor platform
+        from homeassistant.config_entries import ConfigEntry
+        await hass.config_entries.async_forward_entry_setups(config_entry, ["sensor"])
+        
+        _LOGGER.info(f"Created RBAC device {device.id} and loaded sensor platform")
+        
+    except Exception as e:
+        _LOGGER.warning(f"Could not create device/sensors properly: {e}")
 
 
 def _patch_service_registry(hass: HomeAssistant):
@@ -194,38 +209,60 @@ def _patch_service_registry(hass: HomeAssistant):
                 # Skip RBAC enforcement for certain domains that are needed for API functionality
                 excluded_domains = ['http', 'auth', 'system_log', 'persistent_notification']
                 if domain in excluded_domains:
-                    _LOGGER.debug(f"Skipping RBAC enforcement for {domain}.{service} (excluded domain)")
+                    _LOGGER.warning(f"Skipping RBAC enforcement for {domain}.{service} (excluded domain)")
                     return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
                 
                 # Get user information
                 user = None
                 user_id = None
                 
+                # Try to get user from context first
                 if context and hasattr(context, 'user_id') and context.user_id:
-                        user = await self._hass.auth.async_get_user(context.user_id)
-                        user_id = context.user_id
+                    user = await self._hass.auth.async_get_user(context.user_id)
+                    user_id = context.user_id
+                    _LOGGER.warning(f"Got user from context: {user_id} ({user.name if user else 'Unknown'})")
+                else:
+                    # If no context, try to get from stored user context (for UI calls)
+                    if DOMAIN in self._hass.data and "last_service_user" in self._hass.data[DOMAIN]:
+                        user_id = self._hass.data[DOMAIN]["last_service_user"]
+                        user = await self._hass.auth.async_get_user(user_id)
+                        _LOGGER.warning(f"Got user from stored context: {user_id} ({user.name if user else 'Unknown'})")
+                    else:
+                        _LOGGER.warning(f"No user context available for {domain}.{service} - context: {context}")
                         
                         # Store user context for UI calls
-                        if DOMAIN in self._hass.data:
+                if user_id and DOMAIN in self._hass.data:
                             self._hass.data[DOMAIN]["last_service_user"] = user_id
-                            _LOGGER.debug(f"Stored user context for UI calls: {user_id}")
                 
                 # Skip RBAC enforcement for Home Assistant built-in users
                 if user_id and _is_builtin_ha_user(user_id, self._hass):
-                    _LOGGER.debug(f"Skipping RBAC enforcement for built-in HA user: {user_id} ({user.name if user else 'Unknown'})")
+                    _LOGGER.warning(f"Skipping RBAC enforcement for built-in HA user: {user_id} ({user.name if user else 'Unknown'})")
                     return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
                 
                 # Log the service call attempt
                 user_name = user.name if user else "Unknown"
-                _LOGGER.debug(f"Service call: {domain}.{service} by {user_name} (user_id: {user_id})")
+                _LOGGER.warning(f"RBAC checking service call: {domain}.{service} by {user_name} (user_id: {user_id})")
+                
+                # If no user context, allow the call to proceed (likely from automation/script)
+                if not user_id:
+                    _LOGGER.warning(f"No user context for {domain}.{service} - allowing call to proceed (likely automation/script)")
+                    return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
                 
                 # Get access config
                 access_config = self._hass.data[DOMAIN]["access_config"]
                 
-                # Check if service call blocking is enabled
-                block_service_calls = options.get("block_service_calls", True)
+                # Check if RBAC is enabled
+                rbac_enabled = access_config.get("enabled", True)
                 
-                if block_service_calls:
+                if not rbac_enabled:
+                    _LOGGER.warning(f"RBAC is disabled - allowing all service calls")
+                    return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
+                
+                # RBAC is enabled, enforce restrictions
+                if rbac_enabled:
+                    # Debug: Log the access config structure
+                    _LOGGER.warning(f"Access config for {user_name}: {access_config}")
+                    
                     # Check access permissions with detailed logging
                     access_result, reason = _check_service_access_with_reason(domain, service, service_data, user_id, access_config)
                     
@@ -233,6 +270,13 @@ def _patch_service_registry(hass: HomeAssistant):
                         _LOGGER.warning(
                             f"Access denied: {user_name} cannot call {domain}.{service} - {reason}"
                         )
+                        
+                        # Update rejection sensors
+                        try:
+                            from .services import _update_rejection_sensors
+                            _update_rejection_sensors(hass, user_id, f"{domain}.{service}")
+                        except Exception as e:
+                            _LOGGER.error(f"Error updating rejection sensors: {e}")
                         
                         # Create persistent notification if enabled
                         if access_config.get("show_notifications", True):
@@ -308,6 +352,7 @@ def _patch_service_registry(hass: HomeAssistant):
     
     # Replace the service registry
     hass.services = RestrictedServiceRegistry(original_registry, hass)
+    _LOGGER.warning("RBAC service registry patching applied successfully")
     
     # Patch service registry to filter restricted services
     _patch_service_list(hass)
@@ -315,8 +360,6 @@ def _patch_service_registry(hass: HomeAssistant):
     # Patch search functionality to filter restricted entities
     _patch_search(hass)
     
-    # Store options in hass.data for access by other functions
-    hass.data[DOMAIN]["options"] = {}
 
 
 
@@ -536,8 +579,8 @@ def _patch_search(hass: HomeAssistant):
                         # Get search results
                         results = await self._original.async_search(query, context)
                         
-                        # Filter out restricted entities
-                        hide_blocked_entities = options.get("hide_blocked_entities", False)
+                        # Entity hiding is disabled - return all results
+                        hide_blocked_entities = False
                         
                         if hide_blocked_entities:
                             filtered_results = []
@@ -653,19 +696,23 @@ def _check_service_access_with_reason(
     
     # If user not in config, apply default restrictions
     if not user_config:
+        _LOGGER.warning(f"User {user_id} not in config, checking default restrictions")
         # Check default restrictions
         default_restrictions = access_config.get("default_restrictions", {})
+        _LOGGER.warning(f"Default restrictions: {default_restrictions}")
         if default_restrictions:
             # Check domain-level default restrictions
             default_domains = default_restrictions.get("domains", {})
+            _LOGGER.warning(f"Checking domain {domain} against default domains: {default_domains}")
             if domain in default_domains:
                 domain_config = default_domains[domain]
-                # If domain is hidden, hide all services
-                if domain_config.get("hide", False):
-                    return False, f"domain {domain} blocked by default"
-                # Check specific service restrictions
+                _LOGGER.warning(f"Found domain {domain} config: {domain_config}")
+                # Check service restrictions
                 default_services = domain_config.get("services", [])
-                if service in default_services:
+                if not default_services:  # Empty services list = block all services
+                    _LOGGER.warning(f"Domain {domain} blocks all services")
+                    return False, f"domain {domain} blocked by default"
+                elif service in default_services:  # Service is in blocked list = block it
                     return False, f"service {domain}.{service} blocked by default"
             
             # Check entity-level default restrictions
@@ -676,23 +723,21 @@ def _check_service_access_with_reason(
                         default_entities = default_restrictions.get("entities", {})
                         if eid in default_entities:
                             entity_config = default_entities[eid]
-                            # If entity is hidden, hide all services
-                            if entity_config.get("hide", False):
-                                return False, f"entity {eid} blocked by default"
-                            # Check specific service restrictions
+                            # Check service restrictions
                             default_entity_services = entity_config.get("services", [])
-                            if service in default_entity_services:
+                            if not default_entity_services:  # Empty services list = block all services
+                                return False, f"entity {eid} blocked by default"
+                            elif service in default_entity_services:  # Service is in blocked list = block it
                                 return False, f"entity {eid} service {service} blocked by default"
                 else:
                     default_entities = default_restrictions.get("entities", {})
                     if entity_id in default_entities:
                         entity_config = default_entities[entity_id]
-                        # If entity is hidden, hide all services
-                        if entity_config.get("hide", False):
-                            return False, f"entity {entity_id} blocked by default"
-                        # Check specific service restrictions
+                        # Check service restrictions
                         default_entity_services = entity_config.get("services", [])
-                        if service in default_entity_services:
+                        if not default_entity_services:  # Empty services list = block all services
+                            return False, f"entity {entity_id} blocked by default"
+                        elif service in default_entity_services:  # Specific services listed = block only those
                             return False, f"entity {entity_id} service {service} blocked by default"
         
         return True, f"no default restrictions"
@@ -700,29 +745,120 @@ def _check_service_access_with_reason(
     # Get user's role
     user_role = user_config.get("role", "unknown")
     
-    # Check entity-level restrictions first
+    # Get role configuration
+    roles = access_config.get("roles", {})
+    role_config = roles.get(user_role, {})
+    
+    if not role_config:
+        return True, f"no role configuration for {user_role}"
+    
+    # Check if role is admin
+    is_admin_role = role_config.get("admin", False)
+    if is_admin_role:
+        return True, f"admin role {user_role} has full access"
+    
+    # For non-admin roles, merge default restrictions with role-specific restrictions
+    default_restrictions = access_config.get("default_restrictions", {})
+    permissions = role_config.get("permissions", {})
+    
+    # Check domain-level restrictions (merge default + role)
+    default_domains = default_restrictions.get("domains", {})
+    role_domains = permissions.get("domains", {})
+    
+    # Check if domain is restricted in defaults
+    if domain in default_domains:
+        default_services = default_domains[domain].get("services", [])
+        if not default_services:  # Default blocks all services
+            # Check if role allows this domain
+            if domain not in role_domains:
+                return False, f"domain {domain} blocked by default restrictions"
+            role_services = role_domains[domain].get("services", [])
+            if not role_services:  # Role also blocks all services
+                return False, f"domain {domain} blocked by role {user_role}"
+            elif service not in role_services:  # Service not in role's allowed list
+                return False, f"service {domain}.{service} not allowed by role {user_role}"
+        elif service in default_services:  # Default blocks specific service
+            # Check if role allows this service
+            if domain not in role_domains:
+                return False, f"service {domain}.{service} blocked by default restrictions"
+            role_services = role_domains[domain].get("services", [])
+            if service in role_services:  # Role also blocks this service
+                return False, f"service {domain}.{service} blocked by role {user_role}"
+    
+    # Check role-specific domain restrictions
+    if domain in role_domains:
+        role_services = role_domains[domain].get("services", [])
+        if not role_services:  # Role blocks all services for this domain
+            return False, f"domain {domain} blocked by role {user_role}"
+        elif service in role_services:  # Role blocks specific service
+            return False, f"service {domain}.{service} blocked by role {user_role}"
+    
+    # Check entity-level restrictions (merge default + role)
     if service_data and "entity_id" in service_data:
         entity_id = service_data["entity_id"]
         if isinstance(entity_id, list):
-            # Check all entities in the list
             for eid in entity_id:
-                entity_result, entity_reason = _check_entity_access_with_reason(eid, service, user_config)
-                if not entity_result:
-                    return False, f"entity restriction: {entity_reason}"
+                # Check default entity restrictions
+                default_entities = default_restrictions.get("entities", {})
+                if eid in default_entities:
+                    default_entity_services = default_entities[eid].get("services", [])
+                    if not default_entity_services:  # Default blocks all services
+                        # Check if role allows this entity
+                        role_entities = permissions.get("entities", {})
+                        if eid not in role_entities:
+                            return False, f"entity {eid} blocked by default restrictions"
+                        role_entity_services = role_entities[eid].get("services", [])
+                        if not role_entity_services:  # Role also blocks all services
+                            return False, f"entity {eid} blocked by role {user_role}"
+                        elif service not in role_entity_services:  # Service not in role's allowed list
+                            return False, f"entity {eid} service {service} not allowed by role {user_role}"
+                    elif service in default_entity_services:  # Default blocks specific service
+                        # Check if role allows this service
+                        role_entities = permissions.get("entities", {})
+                        if eid not in role_entities:
+                            return False, f"entity {eid} service {service} blocked by default restrictions"
+                        role_entity_services = role_entities[eid].get("services", [])
+                        if service in role_entity_services:  # Role also blocks this service
+                            return False, f"entity {eid} service {service} blocked by role {user_role}"
+                
+                # Check role-specific entity restrictions
+                role_entities = permissions.get("entities", {})
+                if eid in role_entities:
+                    role_entity_services = role_entities[eid].get("services", [])
+                    if not role_entity_services:  # Role blocks all services for this entity
+                        return False, f"entity {eid} blocked by role {user_role}"
+                    elif service in role_entity_services:  # Role blocks specific service
+                        return False, f"entity {eid} service {service} blocked by role {user_role}"
         else:
-            entity_result, entity_reason = _check_entity_access_with_reason(entity_id, service, user_config)
-            if not entity_result:
-                return False, f"entity restriction: {entity_reason}"
-    
-    # Check domain-level restrictions
-    domain_result, domain_reason = _check_domain_access_with_reason(domain, service, user_config)
-    if not domain_result:
-        return False, f"domain restriction: {domain_reason}"
-    
-    # All users use allow model with restrictions (allow by default, deny specific services)
-    restriction_result, restriction_reason = _check_restriction_access_with_reason(domain, service, service_data, user_config)
-    if restriction_result:
-        return False, f"service restriction: {restriction_reason}"
+            # Same logic for single entity
+            default_entities = default_restrictions.get("entities", {})
+            if entity_id in default_entities:
+                default_entity_services = default_entities[entity_id].get("services", [])
+                if not default_entity_services:  # Default blocks all services
+                    role_entities = permissions.get("entities", {})
+                    if entity_id not in role_entities:
+                        return False, f"entity {entity_id} blocked by default restrictions"
+                    role_entity_services = role_entities[entity_id].get("services", [])
+                    if not role_entity_services:  # Role also blocks all services
+                        return False, f"entity {entity_id} blocked by role {user_role}"
+                    elif service not in role_entity_services:  # Service not in role's allowed list
+                        return False, f"entity {entity_id} service {service} not allowed by role {user_role}"
+                elif service in default_entity_services:  # Default blocks specific service
+                    role_entities = permissions.get("entities", {})
+                    if entity_id not in role_entities:
+                        return False, f"entity {entity_id} service {service} blocked by default restrictions"
+                    role_entity_services = role_entities[entity_id].get("services", [])
+                    if service in role_entity_services:  # Role also blocks this service
+                        return False, f"entity {entity_id} service {service} blocked by role {user_role}"
+            
+            # Check role-specific entity restrictions
+            role_entities = permissions.get("entities", {})
+            if entity_id in role_entities:
+                role_entity_services = role_entities[entity_id].get("services", [])
+                if not role_entity_services:  # Role blocks all services for this entity
+                    return False, f"entity {entity_id} blocked by role {user_role}"
+                elif service in role_entity_services:  # Role blocks specific service
+                    return False, f"entity {entity_id} service {service} blocked by role {user_role}"
     
     return True, f"access granted"
 

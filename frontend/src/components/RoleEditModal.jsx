@@ -20,12 +20,14 @@ export function RoleEditModal({
   const [showTemplate, setShowTemplate] = useState(false);
   const [domainRestrictions, setDomainRestrictions] = useState([]);
   const [entityRestrictions, setEntityRestrictions] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (visible && roleConfig) {
       // Initialize form with role data
       form.setFieldsValue({
         description: roleConfig.description || '',
+        admin: roleConfig.admin || false,
         template: roleConfig.template || '',
         fallbackRole: roleConfig.fallbackRole || '',
         domains: roleConfig.permissions?.domains || {},
@@ -40,7 +42,6 @@ export function RoleEditModal({
         Object.entries(roleConfig.permissions.domains).forEach(([domain, config]) => {
           domainRestrictions.push({
             domain,
-            hide: config.hide || false,
             services: config.services || []
           });
         });
@@ -50,7 +51,6 @@ export function RoleEditModal({
         Object.entries(roleConfig.permissions.entities).forEach(([entity, config]) => {
           entityRestrictions.push({
             entity,
-            hide: config.hide || false,
             services: config.services || []
           });
         });
@@ -59,12 +59,14 @@ export function RoleEditModal({
       setDomainRestrictions(domainRestrictions);
       setEntityRestrictions(entityRestrictions);
       setShowTemplate(!!roleConfig.template);
+      setIsAdmin(roleConfig.admin || false);
     } else if (visible) {
       // New role
       form.resetFields();
       setDomainRestrictions([]);
       setEntityRestrictions([]);
       setShowTemplate(false);
+      setIsAdmin(false);
     }
   }, [visible, roleConfig, form]);
 
@@ -78,20 +80,19 @@ export function RoleEditModal({
       
       domainRestrictions.forEach(restriction => {
         domains[restriction.domain] = {
-          hide: restriction.hide,
           services: restriction.services
         };
       });
       
       entityRestrictions.forEach(restriction => {
         entities[restriction.entity] = {
-          hide: restriction.hide,
           services: restriction.services
         };
       });
       
       const roleData = {
         description: values.description,
+        admin: values.admin || false,
         permissions: {
           domains,
           entities
@@ -106,14 +107,20 @@ export function RoleEditModal({
         }
       }
       
-      onSave(roleData);
+      // For new roles, include the role name
+      const saveData = {
+        roleData,
+        roleName: roleName || values.roleName  // Use existing name or new name from form
+      };
+      
+      onSave(saveData);
     } catch (error) {
       console.error('Form validation failed:', error);
     }
   };
 
   const addDomainRestriction = () => {
-    setDomainRestrictions([...domainRestrictions, { domain: '', hide: false, services: [] }]);
+    setDomainRestrictions([...domainRestrictions, { domain: '', services: [] }]);
   };
 
   const removeDomainRestriction = (index) => {
@@ -127,7 +134,7 @@ export function RoleEditModal({
   };
 
   const addEntityRestriction = () => {
-    setEntityRestrictions([...entityRestrictions, { entity: '', hide: false, services: [] }]);
+    setEntityRestrictions([...entityRestrictions, { entity: '', services: [] }]);
   };
 
   const removeEntityRestriction = (index) => {
@@ -150,7 +157,21 @@ export function RoleEditModal({
 
   return (
     <Modal
-      title={roleName ? `Edit Role: ${roleName}` : 'Create New Role'}
+      title={
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: '40px' }}>
+          <span>{roleName ? `Edit Role: ${roleName}` : 'Create New Role'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Text style={{ fontSize: '14px' }}>Admin Role</Text>
+            <Switch
+              checked={isAdmin}
+              onChange={(checked) => {
+                setIsAdmin(checked);
+                form.setFieldsValue({ admin: checked });
+              }}
+            />
+          </div>
+        </div>
+      }
       open={visible}
       onCancel={onCancel}
       onOk={handleSave}
@@ -159,6 +180,20 @@ export function RoleEditModal({
       cancelText="Cancel"
     >
       <Form form={form} layout="vertical">
+        {!roleName && (
+          <Form.Item
+            name="roleName"
+            label="Role Name"
+            rules={[
+              { required: true, message: 'Please enter a role name' },
+              { pattern: /^[a-z0-9_]+$/, message: 'Role name must be lowercase letters, numbers, and underscores only' }
+            ]}
+            help="Use lowercase letters, numbers, and underscores (e.g., 'power_user', 'guest', 'moderator')"
+          >
+            <Input placeholder="Enter role name (e.g., 'power_user')" />
+          </Form.Item>
+        )}
+
         <Form.Item
           name="description"
           label="Description"
@@ -167,7 +202,13 @@ export function RoleEditModal({
           <Input placeholder="Enter role description" />
         </Form.Item>
 
-        <Divider>Template Configuration</Divider>
+        <Form.Item name="admin" hidden>
+          <Input />
+        </Form.Item>
+
+        {!isAdmin && (
+          <>
+            <Divider>Template Configuration</Divider>
         
         {!showTemplate ? (
           <Button 
@@ -214,7 +255,7 @@ export function RoleEditModal({
         {domainRestrictions.map((restriction, index) => (
           <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
             <Row gutter={16} align="middle">
-              <Col span={8}>
+              <Col span={10}>
                 <Select
                   placeholder="Select domain"
                   value={restriction.domain}
@@ -226,18 +267,10 @@ export function RoleEditModal({
                   ))}
                 </Select>
               </Col>
-              <Col span={6}>
-                <Switch
-                  checked={restriction.hide}
-                  onChange={(checked) => updateDomainRestriction(index, 'hide', checked)}
-                  checkedChildren="Hide"
-                  unCheckedChildren="Show"
-                />
-              </Col>
-              <Col span={8}>
+              <Col span={12}>
                 <Select
                   mode="multiple"
-                  placeholder="Select services to block"
+                  placeholder="Select services to block (empty = block all)"
                   value={restriction.services}
                   onChange={(value) => updateDomainRestriction(index, 'services', value)}
                   style={{ width: '100%' }}
@@ -273,7 +306,7 @@ export function RoleEditModal({
         {entityRestrictions.map((restriction, index) => (
           <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }}>
             <Row gutter={16} align="middle">
-              <Col span={8}>
+              <Col span={10}>
                 <Select
                   placeholder="Select entity"
                   value={restriction.entity}
@@ -285,18 +318,10 @@ export function RoleEditModal({
                   ))}
                 </Select>
               </Col>
-              <Col span={6}>
-                <Switch
-                  checked={restriction.hide}
-                  onChange={(checked) => updateEntityRestriction(index, 'hide', checked)}
-                  checkedChildren="Hide"
-                  unCheckedChildren="Show"
-                />
-              </Col>
-              <Col span={8}>
+              <Col span={12}>
                 <Select
                   mode="multiple"
-                  placeholder="Select services to block"
+                  placeholder="Select services to block (empty = block all)"
                   value={restriction.services}
                   onChange={(value) => updateEntityRestriction(index, 'services', value)}
                   style={{ width: '100%' }}
@@ -326,6 +351,8 @@ export function RoleEditModal({
         >
           Add Entity Restriction
         </Button>
+          </>
+        )}
       </Form>
     </Modal>
   );

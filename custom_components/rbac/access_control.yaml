@@ -1,102 +1,62 @@
-# RBAC Access Control Configuration
-version: "2.0"
-description: "Role-Based Access Control Configuration"
-
-# Default restrictions applied to all users
+version: '2.0'
+description: Role-Based Access Control Configuration
 default_restrictions:
   domains:
     light:
-      hide: true  # Show light entities but restrict services
-      services:
-        - "toggle"
-        - "turn_on"
-    switch:
-      hide: true  # Show light entities but restrict services
-      services:
-        - "toggle"
-        - "turn_on"
+      services: []  # Empty services = block all services
     homeassistant:
-      hide: true  # Show homeassistant entities but restrict services
-      services:
-        - "restart"
-        - "stop"
-        - "reload_config_entry"
-        - "check_config"
-    system_log:
-      hide: true   # Hide entire system_log domain
-      services:
-        - "clear"
-    hassio:
-      hide: true   # Hide entire hassio domain
-      services:
-        - "host_reboot"
-        - "host_shutdown"
-        - "supervisor_update"
-        - "supervisor_restart"
-  entities:
-    # Add any entity-level default restrictions here
-    # Example:
-    # alarm_control_panel.home:
-    #   hide: false  # Show this specific alarm panel
-    #   services:
-    #     - "alarm_arm_away"
-
-# Role definitions
+      services: []  # Empty services = block all services
+  entities: {}
 roles:
   admin:
-    description: "Administrator with full access"
+    description: Administrator with full access
+    admin: true  # Admin role bypasses all restrictions
     permissions:
-      domains: {}  # No additional restrictions
-      entities: {}  # No additional restrictions
-      services: {}  # No additional restrictions
-  
+      domains: {}
+      entities: {}
   user:
-    description: "Standard user with limited permissions"
+    description: Standard user with limited permissions
+    admin: false  # Non-admin role uses default restrictions + role-specific
     permissions:
       domains:
         homeassistant:
-          hide: true
           services:
-            - "restart"
-            - "stop"
-            - "reload_config_entry"
-            - "check_config"
+          - restart
+          - stop
+          - reload_config_entry
+          - check_config
         hassio:
-          hide: true
           services:
-            - "host_reboot"
-            - "host_shutdown"
-            - "supervisor_update"
-            - "supervisor_restart"
+          - host_reboot
+          - host_shutdown
+          - supervisor_update
+          - supervisor_restart
+        light:
+          services: []  # Block all light services
       entities: {}
-      services: {}
-  
   guest:
-    description: "Guest with minimal permissions"
+    description: Guest with minimal permissions
+    admin: false  # Non-admin role uses default restrictions + role-specific
     permissions:
       domains:
         homeassistant:
-          hide: true
           services:
-            - "restart"
-            - "stop"
-            - "reload_config_entry"
-            - "check_config"
+          - restart
+          - stop
+          - reload_config_entry
+          - check_config
         hassio:
-          hide: true
           services:
-            - "host_reboot"
-            - "host_shutdown"
-            - "supervisor_update"
-            - "supervisor_restart"
+          - host_reboot
+          - host_shutdown
+          - supervisor_update
+          - supervisor_restart
         system_log:
-          hide: true
           services:
-            - "clear"
+          - clear
       entities: {}
-      services: {}
-
-# User role assignments
 users:
   539d48e809fa43978561b2ff219b18a0:
-    role: "admin"
+    role: admin
+  afa89e2ba24e4d57b1a892a5b0754214:
+    role: user

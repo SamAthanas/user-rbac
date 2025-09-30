@@ -31,9 +31,12 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange }) {
     }
   }, [data.config]);
 
-  // Check if user is admin
+  // Check if user has an admin role
   const isUserAdmin = (user) => {
-    return userRoles[user.id] === 'admin';
+    const roleName = userRoles[user.id];
+    if (!roleName || !data.config?.roles) return false;
+    const role = data.config.roles[roleName];
+    return role?.admin === true;
   };
 
   // Get admin glow styles

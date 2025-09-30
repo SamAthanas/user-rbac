@@ -861,6 +861,61 @@ def _is_admin_user(hass: HomeAssistant, user_id: str) -> bool:
         return False
 
 
+def _update_rejection_sensors(hass: HomeAssistant, user_id: str, service: str):
+    """Update the last rejection sensors when access is denied."""
+    try:
+        from datetime import datetime
+        
+        # Get current time
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Get user name from person entity
+        user_name = "Unknown"
+        try:
+            # First try to get the person entity for this user
+            for state in hass.states.async_all():
+                if state.domain == "person" and state.attributes.get("user_id") == user_id:
+                    # Use the friendly name from the person entity
+                    user_name = state.attributes.get("friendly_name") or state.name
+                    break
+            
+            # Fallback to user name if no person entity found
+            if user_name == "Unknown":
+                user = hass.auth.async_get_user(user_id)
+                if user:
+                    user_name = user.name or f"User {user_id[:8]}"
+        except:
+            pass
+        
+        # Update sensors
+        hass.states.async_set(
+            f"sensor.{DOMAIN}_last_rejection",
+            now,
+            {
+                "friendly_name": "RBAC Last Rejection",
+                "icon": "mdi:clock-alert"
+            }
+        )
+        
+        hass.states.async_set(
+            f"sensor.{DOMAIN}_last_user_rejected",
+            user_name,
+            {
+                "friendly_name": "RBAC Last User Rejected",
+                "icon": "mdi:account-alert"
+            }
+        )
+        
+        # Update access config
+        access_config = hass.data.get(DOMAIN, {}).get("access_config", {})
+        access_config["last_rejection"] = now
+        access_config["last_user_rejected"] = user_name
+        hass.data[DOMAIN]["access_config"] = access_config
+        
+    except Exception as e:
+        _LOGGER.error(f"Error updating rejection sensors: {e}")
+
+
 class RBACConfigView(HomeAssistantView):
     """Handle RBAC configuration API requests."""
 
@@ -920,13 +975,21 @@ class RBACConfigView(HomeAssistantView):
                 role_name = data.get("roleName")
                 role_config = data.get("roleConfig")
                 
+                _LOGGER.info(f"Updating role: {role_name} with config: {role_config}")
+                
                 if not role_name or not role_config:
                     return self.json({"error": "Missing roleName or roleConfig"}, status_code=400)
+                
+                # Validate role name format
+                import re
+                if not re.match(r'^[a-z0-9_]+$', role_name):
+                    return self.json({"error": "Role name must contain only lowercase letters, numbers, and underscores"}, status_code=400)
                 
                 # Update or create role
                 if "roles" not in access_config:
                     access_config["roles"] = {}
                 access_config["roles"][role_name] = role_config
+                _LOGGER.info(f"Role {role_name} saved successfully")
                 
             elif action == "delete_role":
                 role_name = data.get("roleName")
@@ -967,11 +1030,27 @@ class RBACConfigView(HomeAssistantView):
                 # Update default restrictions
                 access_config["default_restrictions"] = restrictions
                 
+            elif action == "update_settings":
+                # Update enabled, show_notifications, send_event settings
+                if "enabled" in data:
+                    access_config["enabled"] = data["enabled"]
+                if "show_notifications" in data:
+                    access_config["show_notifications"] = data["show_notifications"]
+                if "send_event" in data:
+                    access_config["send_event"] = data["send_event"]
+                
+            # Preserve runtime fields that shouldn't be saved to YAML
+            config_to_save = access_config.copy()
+            runtime_fields = ["last_rejection", "last_user_rejected"]
+            for field in runtime_fields:
+                if field in config_to_save:
+                    del config_to_save[field]
+            
             # Save configuration back to YAML file
-            success = await _save_access_control_config(hass, access_config)
+            success = await _save_access_control_config(hass, config_to_save)
             
             if success:
-                # Update the in-memory config as well
+                # Update the in-memory config as well (keep runtime fields)
                 hass.data[DOMAIN]["access_config"] = access_config
                 return self.json({"success": True})
             else:
@@ -1210,4 +1289,42 @@ class RBACCurrentUserView(HomeAssistantView):
             })
         except Exception as e:
             _LOGGER.error(f"Error getting current user: {e}")
+            return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACSensorsView(HomeAssistantView):
+    """View to get RBAC sensor states."""
+    
+    url = "/api/rbac/sensors"
+    name = "api:rbac:sensors"
+    requires_auth = True
+    
+    async def get(self, request):
+        """Get RBAC sensor states."""
+        try:
+            hass = request.app["hass"]
+            
+            # Get sensor states
+            sensors = {
+                "last_rejection": hass.states.get(f"sensor.{DOMAIN}_last_rejection"),
+                "last_user_rejected": hass.states.get(f"sensor.{DOMAIN}_last_user_rejected"),
+                "enabled": hass.states.get(f"sensor.{DOMAIN}_enabled"),
+                "show_notifications": hass.states.get(f"sensor.{DOMAIN}_show_notifications"),
+                "send_events": hass.states.get(f"sensor.{DOMAIN}_send_events"),
+            }
+            
+            # Convert to simple dict
+            result = {}
+            for key, sensor in sensors.items():
+                if sensor:
+                    result[key] = {
+                        "state": sensor.state,
+                        "attributes": dict(sensor.attributes)
+                    }
+                else:
+                    result[key] = None
+            
+            return self.json(result)
+        except Exception as e:
+            _LOGGER.error(f"Error getting RBAC sensors: {e}")
             return self.json({"error": str(e)}, status_code=500)

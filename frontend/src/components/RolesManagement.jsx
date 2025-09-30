@@ -85,10 +85,6 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
   };
 
   const handleDeleteRole = async (roleName) => {
-    if (!confirm(`Are you sure you want to delete the role "${roleName}"?`)) {
-      return;
-    }
-
     setLoading(true);
     try {
       const auth = await getHAAuth();
@@ -152,13 +148,17 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
     setShowCreateModal(false);
   };
 
-  const handleSaveRole = async (roleData) => {
+  const handleSaveRole = async (saveData) => {
     setLoading(true);
     try {
       const auth = await getHAAuth();
       if (!auth) {
         throw new Error('Not authenticated with Home Assistant');
       }
+
+      // Extract role name and data
+      const { roleName: newRoleName, roleData } = saveData;
+      const targetRoleName = newRoleName || editingRole;
 
       const response = await fetch('/api/rbac/config', {
         method: 'POST',
@@ -168,7 +168,7 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
         },
         body: JSON.stringify({
           action: 'update_role',
-          roleName: editingRole,
+          roleName: targetRoleName,
           roleConfig: roleData
         })
       });
@@ -201,7 +201,7 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
     }
   };
 
-  const handleCreateRoleSave = async (roleData) => {
+  const handleCreateRoleSave = async (saveData) => {
     setLoading(true);
     try {
       const auth = await getHAAuth();
@@ -209,8 +209,8 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
         throw new Error('Not authenticated with Home Assistant');
       }
 
-      // Generate a unique role name
-      const roleName = `role_${Date.now()}`;
+      // Extract role name and data from saveData
+      const { roleName, roleData } = saveData;
 
       const response = await fetch('/api/rbac/config', {
         method: 'POST',
