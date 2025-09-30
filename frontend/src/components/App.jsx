@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
-import { ConfigProvider, Layout, notification, Collapse, Alert, Button, Card, Switch, Tooltip } from 'antd';
+import { ConfigProvider, Layout, notification, Collapse, Alert, Button, Card, Switch, Tooltip, Typography } from 'antd';
 import { Header } from './Header';
 import { DefaultRestrictions } from './DefaultRestrictions';
 import { RolesManagement } from './RolesManagement';
@@ -15,6 +15,10 @@ export function App() {
   const [showNotifications, setShowNotifications] = useState(true);
   const [sendEvent, setSendEvent] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [sensors, setSensors] = useState({
+    last_rejection: null,
+    last_user_rejected: null
+  });
   const [data, setData] = useState({
     users: [],
     domains: [],
@@ -96,6 +100,12 @@ export function App() {
       // Fetch current user
       const userData = await fetchCurrentUser(auth);
       setCurrentUser(userData);
+
+      // Fetch sensors
+      const sensorsData = await fetchSensors(auth);
+      if (sensorsData) {
+        setSensors(sensorsData);
+      }
 
       console.log('Making API calls...');
       const [usersRes, domainsRes, entitiesRes, servicesRes, configRes] = await Promise.all([
@@ -220,7 +230,7 @@ export function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          action: 'update_enabled',
+          action: 'update_settings',
           enabled: checked
         })
       });
@@ -262,7 +272,7 @@ export function App() {
         },
         body: JSON.stringify({
           action: 'update_settings',
-          settings: settings
+          ...settings  // Spread settings at root level
         })
       });
 
@@ -343,6 +353,23 @@ export function App() {
       return null;
     } catch (error) {
       console.error('Error fetching current user:', error);
+      return null;
+    }
+  };
+
+  const fetchSensors = async (auth) => {
+    try {
+      const response = await fetch('/api/rbac/sensors', {
+        headers: { 'Authorization': `Bearer ${auth.access_token}` }
+      });
+      
+      if (response.ok) {
+        const sensorsData = await response.json();
+        return sensorsData;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching sensors:', error);
       return null;
     }
   };
@@ -527,6 +554,113 @@ export function App() {
                   </div>
                 </div>
               </Card>
+              
+              {/* RBAC Status Sensors */}
+              <Card size="small" style={{ marginTop: '16px' }}>
+                <Typography.Title level={5} style={{ marginBottom: '16px' }}>
+                  RBAC Status Sensors
+                </Typography.Title>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div 
+                    className="rbac-sensor-card"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px', 
+                      padding: '12px', 
+                      background: '#f5f5f5', 
+                      borderRadius: '8px',
+                      border: '2px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease'
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>⏰</span>
+                    <div>
+                      <Typography.Text strong>Last Rejection</Typography.Text>
+                      <br />
+                      <Typography.Text type="secondary">
+                        {sensors.last_rejection?.state || 'Never'}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                  
+                  <div 
+                    className="rbac-sensor-card"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px', 
+                      padding: '12px', 
+                      background: '#f5f5f5', 
+                      borderRadius: '8px',
+                      border: '2px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease'
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>👤</span>
+                    <div>
+                      <Typography.Text strong>Last User Rejected</Typography.Text>
+                      <br />
+                      <Typography.Text type="secondary">
+                        {sensors.last_user_rejected?.state || 'None'}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                  
+                  <div 
+                    className="rbac-sensor-card"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px', 
+                      padding: '12px', 
+                      background: '#f5f5f5', 
+                      borderRadius: '8px',
+                      border: '2px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease'
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>🌐</span>
+                    <div>
+                      <Typography.Text strong>Config URL</Typography.Text>
+                      <br />
+                      <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                        /local/community/rbac/config.html
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+              
+              <style>
+                {`
+                  .rbac-sensor-card:hover {
+                    background: linear-gradient(135deg, #f5f5f5 0%, #e8f4fd 100%) !important;
+                    border: 2px solid transparent !important;
+                    background-clip: padding-box !important;
+                    box-shadow: 0 0 20px rgba(24, 144, 255, 0.3) !important;
+                    transform: translateY(-2px) !important;
+                  }
+                  
+                  .rbac-sensor-card:hover::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    border-radius: 8px;
+                    padding: 2px;
+                    background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
+                    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+                    mask-composite: exclude;
+                    z-index: -1;
+                  }
+                `}
+              </style>
             </Collapse.Panel>
             <Collapse.Panel 
               header="Default Restrictions" 

@@ -8,14 +8,12 @@ import {
   Col
 } from 'antd';
 import { AntMultiSelect } from './AntMultiSelect';
-import { ServiceMultiSelect } from './ServiceMultiSelect';
 
 export function DefaultRestrictions({ data, onSuccess, onError }) {
   const [loading, setLoading] = useState(false);
   const [restrictions, setRestrictions] = useState({
     domains: [],
-    entities: [],
-    services: []
+    entities: []
   });
 
   // Initialize restrictions from config
@@ -24,8 +22,7 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
       const defaultRestrictions = data.config.default_restrictions;
       setRestrictions({
         domains: Object.keys(defaultRestrictions.domains || {}),
-        entities: Object.keys(defaultRestrictions.entities || {}),
-        services: Object.keys(defaultRestrictions.services || {})
+        entities: Object.keys(defaultRestrictions.entities || {})
       });
     }
   }, [data.config]);
@@ -58,13 +55,6 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
         defaultRestrictions.entities[entity] = {
           hide: true,
           services: []
-        };
-      });
-
-      // Add service restrictions
-      restrictions.services.forEach(service => {
-        defaultRestrictions.services[service] = {
-          hide: true
         };
       });
 
@@ -176,20 +166,7 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
         </Col>
       </Row>
       
-      <Space direction="vertical" style={{ width: '100%', marginBottom: 24 }}>
-        <ServiceMultiSelect
-          domains={data.services?.domains || {}}
-          entities={data.services?.entities || {}}
-          selectedDomains={restrictions.domains}
-          selectedEntities={restrictions.entities}
-          selectedServices={restrictions.services}
-          onSelectionChange={(services) => setRestrictions(prev => ({ ...prev, services }))}
-          placeholder="Select services to block..."
-          disabled={loading}
-        />
-      </Space>
-      
-      <Space style={{ justifyContent: 'flex-end', display: 'flex', width: '100%' }}>
+      <Space style={{ justifyContent: 'flex-end', display: 'flex', width: '100%', marginTop: 24 }}>
         <Button
           type="primary"
           onClick={handleSave}
