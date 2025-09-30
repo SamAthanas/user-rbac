@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 from homeassistant.helpers.entity import Entity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import Platform
+from homeassistant.helpers.template import Template
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     user_count = len(access_config.get("users", {}))
     _LOGGER.info(f"RBAC Middleware initialized successfully with {user_count} configured users")
     # Register API endpoints
-    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView
+    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACTemplateEvaluateView
     
     hass.http.register_view(RBACConfigView())
     hass.http.register_view(RBACUsersView())
@@ -135,6 +136,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.http.register_view(RBACServicesView())
     hass.http.register_view(RBACCurrentUserView())
     hass.http.register_view(RBACSensorsView())
+    hass.http.register_view(RBACTemplateEvaluateView())
     
     _LOGGER.info("Registered RBAC API endpoints")    
     return True
@@ -264,7 +266,7 @@ def _patch_service_registry(hass: HomeAssistant):
                     _LOGGER.warning(f"Access config for {user_name}: {access_config}")
                     
                     # Check access permissions with detailed logging
-                    access_result, reason = _check_service_access_with_reason(domain, service, service_data, user_id, access_config)
+                    access_result, reason = _check_service_access_with_reason(domain, service, service_data, user_id, access_config, self._hass)
                     
                     if not access_result:
                         _LOGGER.warning(
@@ -318,7 +320,7 @@ def _patch_service_registry(hass: HomeAssistant):
                         )
                 
                 # Service is allowed, proceed with original call
-                if block_service_calls:
+                if rbac_enabled:
                     _LOGGER.debug(f"Service call allowed: {domain}.{service} by {user_name}")
                 else:
                     _LOGGER.debug(f"Service call allowed (blocking disabled): {domain}.{service} by {user_name}")
@@ -682,7 +684,8 @@ def _check_service_access_with_reason(
     service: str,
     service_data: Optional[Dict[str, Any]],
     user_id: Optional[str],
-    access_config: Dict[str, Any]
+    access_config: Dict[str, Any],
+    hass: HomeAssistant = None
 ) -> tuple[bool, str]:
     """Check if a user has access to a specific service call with detailed reason."""
     
@@ -748,6 +751,63 @@ def _check_service_access_with_reason(
     # Get role configuration
     roles = access_config.get("roles", {})
     role_config = roles.get(user_role, {})
+    
+    # Evaluate template if present and switch to fallback role if template evaluates to false
+    if role_config and hass:
+        template_str = role_config.get("template")
+        fallback_role = role_config.get("fallbackRole")
+        
+        if template_str and fallback_role:
+            try:
+                # Create a Template object and render it
+                template = Template(template_str, hass)
+                
+                # Get current user's person entity for template context
+                user_person_entity = None
+                try:
+                    # Look for person entities associated with this user
+                    for state in hass.states.async_all():
+                        if state.domain == "person" and state.attributes.get("user_id") == user_id:
+                            user_person_entity = state.entity_id
+                            break
+                except Exception as e:
+                    _LOGGER.debug(f"Could not find person entity for user {user_id}: {e}")
+                
+                # Create template context with user variable
+                template_context = {}
+                if user_person_entity:
+                    template_context['current_user_str'] = user_person_entity
+                
+                result = template.async_render(template_context, parse_result=False)
+                
+                # Convert result to boolean
+                template_result = bool(result) if result not in [None, "", "False", "false", "0"] else False
+                
+                _LOGGER.debug(f"Template for role {user_role} evaluated to: {template_result} (raw: {result})")
+                
+                # If template evaluates to false, switch to fallback role
+                if not template_result:
+                    _LOGGER.info(f"Template for role {user_role} evaluated to false, switching to fallback role: {fallback_role}")
+                    user_role = fallback_role
+                    role_config = roles.get(user_role, {})
+                    
+                    if not role_config:
+                        _LOGGER.warning(f"Fallback role {fallback_role} not found in configuration")
+                        return True, f"fallback role {fallback_role} not found"
+            except Exception as e:
+                _LOGGER.error(f"Error evaluating template for role {user_role}: {e}")
+                _LOGGER.debug(f"Template evaluation error details: {e}", exc_info=True)
+                # On error, switch to fallback role for security
+                if fallback_role:
+                    _LOGGER.warning(f"Template evaluation failed for role {user_role}, switching to fallback role: {fallback_role}")
+                    user_role = fallback_role
+                    role_config = roles.get(user_role, {})
+                    
+                    if not role_config:
+                        _LOGGER.warning(f"Fallback role {fallback_role} not found in configuration")
+                        return True, f"fallback role {fallback_role} not found"
+                else:
+                    _LOGGER.error(f"No fallback role defined for role {user_role}, continuing with original role")
     
     if not role_config:
         return True, f"no role configuration for {user_role}"
@@ -868,10 +928,11 @@ def _check_service_access(
     service: str,
     service_data: Optional[Dict[str, Any]],
     user_id: Optional[str],
-    access_config: Dict[str, Any]
+    access_config: Dict[str, Any],
+    hass: HomeAssistant = None
 ) -> bool:
     """Check if a user has access to a specific service call."""
-    result, _ = _check_service_access_with_reason(domain, service, service_data, user_id, access_config)
+    result, _ = _check_service_access_with_reason(domain, service, service_data, user_id, access_config, hass)
     return result
 
 

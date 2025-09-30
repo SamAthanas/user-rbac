@@ -11,6 +11,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [reloading, setReloading] = useState(false);
   const [integrationConfigured, setIntegrationConfigured] = useState(true);
+  const [apiError, setApiError] = useState(null);
   const [enabled, setEnabled] = useState(true);
   const [showNotifications, setShowNotifications] = useState(true);
   const [sendEvent, setSendEvent] = useState(false);
@@ -83,6 +84,9 @@ export function App() {
 
   const loadData = async (isManualReload = false) => {
     try {
+      // Clear any previous API errors
+      setApiError(null);
+      
       if (isManualReload) {
         setReloading(true);
       } else {
@@ -196,6 +200,8 @@ export function App() {
       if (err.message.includes('404') || err.message.includes('Not Found')) {
         setIntegrationConfigured(false);
       } else {
+        // Set API error state for display
+        setApiError(err.message);
         notification.error({
           message: 'Error Loading Data',
           description: err.message,
@@ -438,6 +444,51 @@ export function App() {
                       }}
                     >
                       Configure Integration
+                    </Button>
+                  </div>
+                }
+                type="error"
+                icon={<ExclamationCircleOutlined />}
+                showIcon
+                style={{ maxWidth: '500px', width: '100%' }}
+              />
+            </div>
+          </Layout.Content>
+        </Layout>
+      </ConfigProvider>
+    );
+  }
+
+  // Show API error if there's a loading failure
+  if (apiError) {
+    return (
+      <ConfigProvider theme={theme}>
+        <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+          <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+            <Header currentUser={currentUser} />
+            
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              minHeight: '60vh',
+              flexDirection: 'column',
+              gap: '24px'
+            }}>
+              <Alert
+                message={<div style={{ textAlign: 'center' }}>Failed to Load RBAC Data</div>}
+                description={
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ marginBottom: '24px' }}>
+                      {apiError}
+                    </p>
+                    <Button 
+                      type="primary" 
+                      icon={<ReloadOutlined />}
+                      size="large"
+                      onClick={() => loadData(true)}
+                    >
+                      Retry Loading
                     </Button>
                   </div>
                 }

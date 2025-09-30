@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.2.0",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@uiw/react-codemirror": "^4.25.2",
     "antd": "^5.12.0",
     "preact": "^10.19.0"
   },

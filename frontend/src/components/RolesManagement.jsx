@@ -287,15 +287,42 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
                 size="small"
                 style={{ height: '100%' }}
                 actions={[
-                  <Button
+                  <div
                     key="edit"
-                    type="link"
-                    icon={<EditOutlined />}
+                    style={{
+                      padding: '8px 16px',
+                      margin: '4px',
+                      borderRadius: '4px',
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer',
+                      backgroundColor: 'transparent',
+                      color: '#1890ff',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#1890ff';
+                      e.currentTarget.style.color = 'black';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#1890ff';
+                    }}
                     onClick={() => handleEditRole(roleName)}
-                    disabled={loading}
                   >
-                    Edit
-                  </Button>,
+                    <Button
+                      type="link"
+                      icon={<EditOutlined />}
+                      disabled={loading}
+                      style={{ 
+                        color: 'inherit',
+                        padding: 0,
+                        height: 'auto',
+                        border: 'none',
+                        background: 'transparent',
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  </div>,
                   <Popconfirm
                     key="delete"
                     title="Are you sure you want to delete this role?"
@@ -303,14 +330,41 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
                     okText="Yes"
                     cancelText="No"
                   >
-                    <Button
-                      type="link"
-                      danger
-                      icon={<DeleteOutlined />}
-                      disabled={loading}
+                    <div
+                      style={{
+                        padding: '8px 16px',
+                        margin: '4px',
+                        borderRadius: '4px',
+                        transition: 'all 0.2s ease',
+                        cursor: 'pointer',
+                        backgroundColor: 'transparent',
+                        color: '#ff4d4f',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#ff4d4f';
+                        e.currentTarget.style.color = 'black';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = '#ff4d4f';
+                      }}
                     >
-                      Delete
-                    </Button>
+                      <Button
+                        type="link"
+                        danger
+                        icon={<DeleteOutlined />}
+                        disabled={loading}
+                        style={{ 
+                          color: 'inherit',
+                          padding: 0,
+                          height: 'auto',
+                          border: 'none',
+                          background: 'transparent',
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </Popconfirm>
                 ]}
               >
@@ -330,14 +384,38 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
                       </Tooltip>
                     )}
                     {Object.keys(role.permissions?.domains || {}).length > 0 && (
-                      <Tag color="blue">
-                        {Object.keys(role.permissions.domains).length} domains
-                      </Tag>
+                      <Tooltip 
+                        title={
+                          <div>
+                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Domains:</div>
+                            {Object.keys(role.permissions.domains).map(domain => (
+                              <div key={domain} style={{ fontSize: '12px' }}>• {domain}</div>
+                            ))}
+                          </div>
+                        }
+                        placement="top"
+                      >
+                        <Tag color="blue">
+                          {Object.keys(role.permissions.domains).length} domains
+                        </Tag>
+                      </Tooltip>
                     )}
                     {Object.keys(role.permissions?.entities || {}).length > 0 && (
-                      <Tag color="green">
-                        {Object.keys(role.permissions.entities).length} entities
-                      </Tag>
+                      <Tooltip 
+                        title={
+                          <div>
+                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Entities:</div>
+                            {Object.keys(role.permissions.entities).map(entity => (
+                              <div key={entity} style={{ fontSize: '12px' }}>• {entity}</div>
+                            ))}
+                          </div>
+                        }
+                        placement="top"
+                      >
+                        <Tag color="green">
+                          {Object.keys(role.permissions.entities).length} entities
+                        </Tag>
+                      </Tooltip>
                     )}
                   </Space>
                 </div>
