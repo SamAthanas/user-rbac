@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Deploy to Home Assistant",
+            "label": "Deploy Backend + Frontend",
             "type": "shell",
             "command": "${workspaceFolder}/scripts/deploy.sh",
             "group": "build",
@@ -12,6 +12,36 @@
                 "focus": false,
                 "panel": "shared"
             },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build + Deploy Frontend",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/deploy-frontend.sh",
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Dev Server",
+            "type": "shell",
+            "command": "npm run dev",
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "isBackground": true,
             "problemMatcher": []
         }
     ]
