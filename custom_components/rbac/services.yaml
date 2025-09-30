@@ -28,7 +28,7 @@ add_user:
       description: Select a person to add to RBAC
       required: true
       selector:
-        person:
+        person: {}
     role:
       name: Role
       description: The role to assign to the user
@@ -50,7 +50,7 @@ remove_user:
       description: Select a person to remove from RBAC
       required: true
       selector:
-        person:
+        person: {}
 
 update_user_role:
   name: Update user role
@@ -61,7 +61,7 @@ update_user_role:
       description: Select a person to update their role
       required: true
       selector:
-        person:
+        person: {}
     role:
       name: Role
       description: The new role to assign to the user
@@ -83,7 +83,7 @@ add_user_restriction:
       description: Select a person to add restrictions for
       required: true
       selector:
-        person:
+        person: {}
     domain:
       name: Domain
       description: The service domain to restrict
@@ -106,10 +106,99 @@ remove_user_restriction:
       description: Select a person to remove restrictions for
       required: true
       selector:
-        person:
+        person: {}
     domain:
       name: Domain
       description: The service domain to remove restrictions from
+      required: true
+      selector:
+        text:
+
+get_user_device_info:
+  name: Get user device info
+  description: Get device information for a specific user (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to get device info for
+      required: true
+      selector:
+        person: {}
+
+update_user_domain_restrictions:
+  name: Update user domain restrictions
+  description: Update domain restrictions for a user (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to update restrictions for
+      required: true
+      selector:
+        person: {}
+    domains:
+      name: Restricted Domains
+      description: List of domains to restrict for this user
+      required: false
+      selector:
+        object:
+
+update_user_entity_restrictions:
+  name: Update user entity restrictions
+  description: Update entity restrictions for a user (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to update restrictions for
+      required: true
+      selector:
+        person: {}
+    entities:
+      name: Restricted Entities
+      description: List of entities to restrict for this user
+      required: false
+      selector:
+        object:
+
+update_user_service_restrictions:
+  name: Update user service restrictions
+  description: Update service restrictions for a user (admin only)
+  fields:
+    person:
+      name: Person
+      description: Select a person to update restrictions for
+      required: true
+      selector:
+        person: {}
+    domain:
+      name: Domain
+      description: The domain to update service restrictions for
+      required: true
+      selector:
+        text:
+    services:
+      name: Restricted Services
+      description: List of services to restrict for this domain
+      required: false
+      selector:
+        object:
+
+get_available_domains:
+  name: Get available domains
+  description: Get all available domains in Home Assistant (admin only)
+  fields: {}
+
+get_available_entities:
+  name: Get available entities
+  description: Get all available entities in Home Assistant (admin only)
+  fields: {}
+
+get_available_services:
+  name: Get available services
+  description: Get all available services for a specific domain (admin only)
+  fields:
+    domain:
+      name: Domain
+      description: The domain to get services for
       required: true
       selector:
         text:

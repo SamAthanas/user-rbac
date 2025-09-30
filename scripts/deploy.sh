@@ -38,30 +38,95 @@ fi
 backend_source="$(pwd)/custom_components/rbac"
 backend_target="$HA_SERVER_USER@$HA_SERVER_HOST:$HA_SERVER_PATH"
 
-# Check if source directory exists
+frontend_source="$(pwd)/www/community/rbac"
+frontend_target="$HA_SERVER_USER@$HA_SERVER_HOST:/config/www/community/rbac"
+
+# Check if source directories exist
 if [ ! -d "$backend_source" ]; then
     echo "❌ Backend source directory not found: $backend_source"
+    exit 1
+fi
+
+# Build frontend before deployment
+frontend_dir="$(pwd)/frontend"
+if [ -d "$frontend_dir" ]; then
+    echo "🔨 Building Preact frontend..."
+    cd "$frontend_dir"
+    if npm run build; then
+        echo "✅ Frontend build successful!"
+        cd - > /dev/null
+    else
+        echo "❌ Frontend build failed!"
+        cd - > /dev/null
+        exit 1
+    fi
+else
+    echo "⚠️  Frontend directory not found: $frontend_dir"
+    echo "Skipping frontend build..."
+fi
+
+if [ ! -d "$frontend_source" ]; then
+    echo "❌ Frontend source directory not found: $frontend_source"
     exit 1
 fi
 
 echo "🚀 Deploying RBAC Middleware integration to Home Assistant..."
 echo "📁 Backend Source: $backend_source"
 echo "🎯 Backend Target: $backend_target"
+echo "📁 Frontend Source: $frontend_source"
+echo "🎯 Frontend Target: $frontend_target"
 echo ""
 
-# Deploy backend (custom_components)
-backend_scp_command="sshpass -p \"$HA_SERVER_PASSWORD\" scp -r \"$backend_source\" \"$backend_target\""
-if [ "$HA_SERVER_PORT" != "22" ]; then
-    backend_scp_command="sshpass -p \"$HA_SERVER_PASSWORD\" scp -P $HA_SERVER_PORT -r \"$backend_source\" \"$backend_target\""
-fi
-
+# Deploy backend (custom_components) - exclude access_control.yaml
 echo "📦 Deploying RBAC Middleware integration..."
-if eval "$backend_scp_command"; then
-    echo "✅ Integration deployment successful!"
-else
-    echo "❌ Integration deployment failed!"
-    exit 1
-fi
+
+# Deploy individual files (excluding access_control.yaml)
+for file in "$backend_source"/*; do
+    if [ -f "$file" ]; then
+        filename=$(basename "$file")
+        if [ "$filename" != "access_control.yaml" ]; then
+            echo "📄 Deploying $filename..."
+            backend_scp_command="sshpass -p \"$HA_SERVER_PASSWORD\" scp \"$file\" \"$backend_target/rbac/\""
+            if [ "$HA_SERVER_PORT" != "22" ]; then
+                backend_scp_command="sshpass -p \"$HA_SERVER_PASSWORD\" scp -P $HA_SERVER_PORT \"$file\" \"$backend_target/rbac/\""
+            fi
+            
+            if eval "$backend_scp_command"; then
+                echo "✅ Deployed $filename"
+            else
+                echo "❌ Failed to deploy $filename"
+                exit 1
+            fi
+        else
+            echo "⏭️  Skipping $filename (preserving existing configuration)"
+        fi
+    fi
+done
+
+echo "✅ Backend deployment successful!"
+
+# Deploy frontend (JavaScript files)
+echo "📦 Deploying RBAC frontend files..."
+
+# Deploy individual files (not directories)
+for file in "$frontend_source"/*; do
+    if [ -f "$file" ]; then
+        filename=$(basename "$file")
+        frontend_scp_command="sshpass -p \"$HA_SERVER_PASSWORD\" scp \"$file\" \"$frontend_target/$filename\""
+        if [ "$HA_SERVER_PORT" != "22" ]; then
+            frontend_scp_command="sshpass -p \"$HA_SERVER_PASSWORD\" scp -P $HA_SERVER_PORT \"$file\" \"$frontend_target/$filename\""
+        fi
+        
+        if eval "$frontend_scp_command"; then
+            echo "✅ Deployed $filename"
+        else
+            echo "❌ Failed to deploy $filename"
+            exit 1
+        fi
+    fi
+done
+
+echo "✅ Frontend deployment successful!"
 
 echo ""
 echo "🔄 Restarting Home Assistant..."
@@ -77,13 +142,15 @@ if eval "$restart_command"; then
     echo "✅ Home Assistant restart initiated!"
     echo ""
     echo "📋 Next steps:"
-    echo "   1. Wait for Home Assistant to restart (usually 1-2 minutes)"
+    echo "   1. Wait for Home Assistant to restart"
     echo "   2. Check the logs for \"RBAC Middleware\" messages"
     echo "   3. Add the integration via Settings → Devices & Services"
     echo "   4. Configure access control in access_control.yaml file"
-    echo "   5. Use the RBAC services to manage user access"
-    echo ""
-    echo "🔗 Access your Home Assistant at: http://$HA_SERVER_HOST:8123"
+    echo "   5. Add frontend JavaScript to configuration.yaml:"
+    echo "      frontend:"
+    echo "        extra_module_url:"
+    echo "          - /local/community/rbac/rbac.js"
+    echo "   6. Use the RBAC services to manage user access"
 else
     echo "⚠️  Deployment successful but restart failed!"
     echo "Please manually restart Home Assistant."

@@ -2,18 +2,29 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Deploy to Home Assistant",
+            "name": "Deploy Backend + Frontend",
             "type": "node",
             "request": "launch",
             "program": "${workspaceFolder}/scripts/deploy.sh",
             "runtimeExecutable": "/bin/bash",
-            "console": "integratedTerminal",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            }
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Build + Deploy Frontend",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/deploy-frontend.sh",
+            "runtimeExecutable": "/bin/bash",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Start Dev Server",
+            "type": "node",
+            "request": "launch",
+            "program": "npm",
+            "args": ["run", "dev"],
+            "cwd": "${workspaceFolder}/frontend",
+            "console": "integratedTerminal"
         }
     ]
 }
