@@ -600,11 +600,56 @@ export function App() {
             background: white !important;
             border-bottom: 1px solid #f0f0f0 !important;
           }
+          
+          @keyframes bannerSlideIn {
+            0% {
+              opacity: 0;
+              transform: translateY(-20px) scale(0.95);
+              filter: blur(2px);
+            }
+            50% {
+              opacity: 0.7;
+              transform: translateY(-5px) scale(0.98);
+              filter: blur(1px);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+              filter: blur(0px);
+            }
+          }
         `}
       </style>
       <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
         <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
           <Header currentUser={currentUser} />
+          
+          {/* RBAC Disabled Warning Banner */}
+          {!enabled && (
+            <Alert
+              message="RBAC is Disabled"
+              description={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Role-based access control is currently disabled. All users have full access to all services and entities.</span>
+                  <Button
+                    type="primary"
+                    onClick={() => handleEnabledToggle(true)}
+                    style={{ marginLeft: '16px' }}
+                  >
+                    Enable RBAC
+                  </Button>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ 
+                marginBottom: '24px',
+                animation: 'bannerSlideIn 0.5s ease-out',
+                transform: 'translateY(0)',
+                opacity: 1
+              }}
+            />
+          )}
           
           <Collapse 
             activeKey={Object.keys(collapsedSections).filter(key => !collapsedSections[key])}

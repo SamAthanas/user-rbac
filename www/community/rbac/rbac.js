@@ -9,7 +9,9 @@
     let blockConfig = {
         domains: [],
         entities: [],
-        services: []
+        services: [],
+        allowed_domains: [],
+        allowed_entities: []
     };
     let frontendBlockingEnabled = false;
     let patched = false;
@@ -89,19 +91,22 @@
                 blockConfig = {
                     domains: data.domains || [],
                     entities: data.entities || [],
-                    services: data.services || []
+                    services: data.services || [],
+                    allowed_domains: data.allowed_domains || [],
+                    allowed_entities: data.allowed_entities || []
                 };
                 
-                console.log('🔒 RBAC Blocking config loaded:', blockConfig);
-                console.log(`   - Blocked domains: ${blockConfig.domains.length}`);
-                console.log(`   - Blocked entities: ${blockConfig.entities.length}`);
-                console.log(`   - Blocked services: ${blockConfig.services.length}`);
+                console.log('🔒 RBAC Blocking config loaded');
+                console.log(`   - Blocked: ${blockConfig.domains.length} domains, ${blockConfig.entities.length} entities`);
+                console.log(`   - Allowed: ${blockConfig.allowed_domains.length} domains, ${blockConfig.allowed_entities.length} entities`);
             } else {
                 console.log('🔓 RBAC Frontend blocking disabled or no restrictions');
                 blockConfig = {
                     domains: [],
                     entities: [],
-                    services: []
+                    services: [],
+                    allowed_domains: [],
+                    allowed_entities: []
                 };
             }
         } catch (error) {
@@ -110,7 +115,9 @@
             blockConfig = {
                 domains: [],
                 entities: [],
-                services: []
+                services: [],
+                allowed_domains: [],
+                allowed_entities: []
             };
         }
     }
@@ -121,13 +128,23 @@
             return false;
         }
         
+        // First check if entity is explicitly allowed
+        if (blockConfig.allowed_entities.includes(entityId)) {
+            return false;
+        }
+        
+        // Check if domain is explicitly allowed
+        const domain = entityId.split('.')[0];
+        if (blockConfig.allowed_domains.includes(domain)) {
+            return false;
+        }
+        
         // Check if entity is explicitly blocked
         if (blockConfig.entities.includes(entityId)) {
             return true;
         }
         
         // Check if domain is blocked
-        const domain = entityId.split('.')[0];
         if (blockConfig.domains.includes(domain)) {
             return true;
         }
@@ -160,16 +177,16 @@
                 }
                 
                 const filtered = allEntities.filter(e => {
-                    if (isEntityBlocked(e.entityId)) {
+                    const blocked = isEntityBlocked(e.entityId);
+                    if (blocked) {
                         return false;
                     }
                     return true;
                 });
                 
                 if (filtered.length !== allEntities.length) {
-                    console.log(
-                        `🔒 Quick Bar: Filtered ${allEntities.length - filtered.length} entities`
-                    );
+                    const totalFiltered = allEntities.length - filtered.length;
+                    console.log(`🔒 Quick Bar: Filtered ${totalFiltered} entities`);
                 }
                 return filtered;
             };

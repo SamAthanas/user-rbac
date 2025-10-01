@@ -1462,10 +1462,10 @@ class RBACFrontendBlockingView(HomeAssistantView):
             # Get access control configuration
             access_config = hass.data.get(DOMAIN, {}).get("access_config", {})
             
-            # Check if frontend blocking is enabled globally
+            rbac_enabled = access_config.get("enabled", True)
             frontend_blocking_enabled = access_config.get("frontend_blocking_enabled", True)
             
-            if not frontend_blocking_enabled:
+            if not rbac_enabled or not frontend_blocking_enabled:
                 return self.json({
                     "enabled": False,
                     "domains": [],
@@ -1531,10 +1531,12 @@ class RBACFrontendBlockingView(HomeAssistantView):
                 user_domains = user_restrictions.get("domains", {})
                 user_entities = user_restrictions.get("entities", {})
                 
-                # Build blocked lists - block everything except explicitly allowed
+                # Build blocked and allowed lists - block everything except explicitly allowed
                 blocked_domains = []
                 blocked_entities = []
                 blocked_services = []
+                allowed_domains = []
+                allowed_entities = []
                 
                 # Process domains - block all except those with allow: true
                 for domain in all_available_domains:
@@ -1552,7 +1554,9 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         if isinstance(role_domain_config, dict):
                             domain_allowed = role_domain_config.get("allow", False)
                     
-                    if not domain_allowed:
+                    if domain_allowed:
+                        allowed_domains.append(domain)
+                    else:
                         blocked_domains.append(domain)
                 
                 # Process entities - block all except those with allow: true
@@ -1571,14 +1575,18 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         if isinstance(role_entity_config, dict):
                             entity_allowed = role_entity_config.get("allow", False)
                     
-                    if not entity_allowed:
+                    if entity_allowed:
+                        allowed_entities.append(entity)
+                    else:
                         blocked_entities.append(entity)
                 
                 return self.json({
                     "enabled": True,
                     "domains": blocked_domains,
                     "entities": blocked_entities,
-                    "services": blocked_services
+                    "services": blocked_services,
+                    "allowed_domains": allowed_domains,
+                    "allowed_entities": allowed_entities
                 })
             
             # Get default restrictions
@@ -1596,10 +1604,12 @@ class RBACFrontendBlockingView(HomeAssistantView):
             user_domains = user_restrictions.get("domains", {})
             user_entities = user_restrictions.get("entities", {})
             
-            # Build blocked lists
+            # Build blocked and allowed lists
             blocked_domains = []
             blocked_entities = []
             blocked_services = []
+            allowed_domains = []
+            allowed_entities = []
             
             # Process domains
             all_domains = set()
@@ -1620,6 +1630,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     domain_allow = user_config.get("allow", False)
                     if domain_allow:
                         # Allow rule: don't block this domain
+                        allowed_domains.append(domain)
                         continue
                     if not user_services:  # Empty list means block all
                         domain_blocked = True
@@ -1632,6 +1643,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     domain_allow = role_config.get("allow", False)
                     if domain_allow:
                         # Allow rule: don't block this domain
+                        allowed_domains.append(domain)
                         continue
                     if not role_services:  # Empty list means block all
                         domain_blocked = True
@@ -1644,6 +1656,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     domain_allow = default_config.get("allow", False)
                     if domain_allow:
                         # Allow rule: don't block this domain
+                        allowed_domains.append(domain)
                         continue
                     if not default_services:  # Empty list means block all
                         domain_blocked = True
@@ -1676,6 +1689,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         entity_allow = user_entity_config.get("allow", False)
                         if entity_allow:
                             # Allow rule: don't block this entity
+                            allowed_entities.append(entity)
                             continue
                         if not entity_services:  # Empty list means block all
                             entity_blocked = True
@@ -1689,6 +1703,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         entity_allow = role_entity_config.get("allow", False)
                         if entity_allow:
                             # Allow rule: don't block this entity
+                            allowed_entities.append(entity)
                             continue
                         if not entity_services:  # Empty list means block all
                             entity_blocked = True
@@ -1702,6 +1717,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         entity_allow = default_entity_config.get("allow", False)
                         if entity_allow:
                             # Allow rule: don't block this entity
+                            allowed_entities.append(entity)
                             continue
                         if not entity_services:  # Empty list means block all
                             entity_blocked = True
@@ -1715,7 +1731,9 @@ class RBACFrontendBlockingView(HomeAssistantView):
                 "enabled": True,
                 "domains": blocked_domains,
                 "entities": blocked_entities,
-                "services": blocked_services
+                "services": blocked_services,
+                "allowed_domains": allowed_domains,
+                "allowed_entities": allowed_entities
             })
             
         except Exception as e:
