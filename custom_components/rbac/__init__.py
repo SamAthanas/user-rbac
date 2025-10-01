@@ -49,6 +49,7 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "enabled": True,
                 "show_notifications": True,
                 "send_event": False,
+                "frontend_blocking_enabled": False,
                 "last_rejection": "Never",
                 "last_user_rejected": "None",
                 "default_restrictions": {
