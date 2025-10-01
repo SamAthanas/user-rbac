@@ -247,13 +247,13 @@
         const hass = getHassObject();
         if (hass && hass.states && hass.states.get) {
             const originalStatesGet = hass.states.get.bind(hass.states);
-            
+
             hass.states.get = function(entityId) {
                 const result = originalStatesGet(entityId);
                 
                 // If frontend blocking is enabled and entity is blocked, return null
                 if (frontendBlockingEnabled && result && isEntityBlocked(entityId)) {
-                    return null;
+                        return null;
                 }
                 
                 return result;
@@ -273,14 +273,14 @@
                 }
                 
                 // Filter out blocked entities
-                const filteredResult = result.filter(state => {
+                    const filteredResult = result.filter(state => {
                     if (isEntityBlocked(state.entity_id)) {
-                        return false;
-                    }
-                    return true;
-                });
-                
-                return filteredResult;
+                            return false;
+                        }
+                        return true;
+                    });
+                    
+                    return filteredResult;
             };
             
         }

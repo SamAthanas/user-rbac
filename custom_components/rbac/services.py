@@ -1530,24 +1530,40 @@ class RBACFrontendBlockingView(HomeAssistantView):
                 # Check if domain is blocked (empty services list means block all)
                 domain_blocked = False
                 domain_services = []
+                domain_allow = False
                 
                 # Check user-specific restrictions first
                 if domain in user_domains:
-                    user_services = user_domains[domain].get("services", [])
+                    user_config = user_domains[domain]
+                    user_services = user_config.get("services", [])
+                    domain_allow = user_config.get("allow", False)
+                    if domain_allow:
+                        # Allow rule: don't block this domain
+                        continue
                     if not user_services:  # Empty list means block all
                         domain_blocked = True
                     else:
                         domain_services = user_services
                 # Check role-specific permissions
                 elif domain in role_domains:
-                    role_services = role_domains[domain].get("services", [])
+                    role_config = role_domains[domain]
+                    role_services = role_config.get("services", [])
+                    domain_allow = role_config.get("allow", False)
+                    if domain_allow:
+                        # Allow rule: don't block this domain
+                        continue
                     if not role_services:  # Empty list means block all
                         domain_blocked = True
                     else:
                         domain_services = role_services
                 # Check default restrictions
                 elif domain in default_domains:
-                    default_services = default_domains[domain].get("services", [])
+                    default_config = default_domains[domain]
+                    default_services = default_config.get("services", [])
+                    domain_allow = default_config.get("allow", False)
+                    if domain_allow:
+                        # Allow rule: don't block this domain
+                        continue
                     if not default_services:  # Empty list means block all
                         domain_blocked = True
                     else:
@@ -1569,12 +1585,17 @@ class RBACFrontendBlockingView(HomeAssistantView):
             for entity in all_entities:
                 # Check if entity is blocked
                 entity_blocked = False
+                entity_allow = False
                 
                 # Check user-specific restrictions first
                 if entity in user_entities:
                     user_entity_config = user_entities[entity]
                     if isinstance(user_entity_config, dict):
                         entity_services = user_entity_config.get("services", [])
+                        entity_allow = user_entity_config.get("allow", False)
+                        if entity_allow:
+                            # Allow rule: don't block this entity
+                            continue
                         if not entity_services:  # Empty list means block all
                             entity_blocked = True
                     else:
@@ -1584,6 +1605,10 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     role_entity_config = role_entities[entity]
                     if isinstance(role_entity_config, dict):
                         entity_services = role_entity_config.get("services", [])
+                        entity_allow = role_entity_config.get("allow", False)
+                        if entity_allow:
+                            # Allow rule: don't block this entity
+                            continue
                         if not entity_services:  # Empty list means block all
                             entity_blocked = True
                     else:
@@ -1593,6 +1618,10 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     default_entity_config = default_entities[entity]
                     if isinstance(default_entity_config, dict):
                         entity_services = default_entity_config.get("services", [])
+                        entity_allow = default_entity_config.get("allow", False)
+                        if entity_allow:
+                            # Allow rule: don't block this entity
+                            continue
                         if not entity_services:  # Empty list means block all
                             entity_blocked = True
                     else:

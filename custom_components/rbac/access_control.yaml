@@ -10,8 +10,10 @@ default_restrictions:
   domains:
     light:
       services: []  # Empty services = block all services
+      allow: false  # Block rule (default)
     homeassistant:
       services: []  # Empty services = block all services
+      allow: false  # Block rule (default)
   entities: {}
 roles:
   admin:
@@ -39,7 +41,11 @@ roles:
           - supervisor_restart
         light:
           services: []  # Block all light services
-      entities: {}
+          allow: false  # Block rule
+      entities:
+        light.kitchen:
+          services: ["turn_on", "turn_off"]  # Allow specific services
+          allow: true  # Allow rule - overrides domain blocking
   guest:
     description: Guest with minimal permissions
     admin: false  # Non-admin role uses default restrictions + role-specific
