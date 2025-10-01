@@ -1,0 +1,16 @@
+/* DefaultRestrictions.css - Default restrictions component styles */
+
+.default-restrictions-description {
+  margin-bottom: 24px;
+}
+
+.default-restrictions-grid {
+  margin-bottom: 24px;
+}
+
+.default-restrictions-save-container {
+  justify-content: flex-end;
+  display: flex;
+  width: 100%;
+  margin-top: 24px;
+}

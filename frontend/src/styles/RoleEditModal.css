@@ -1,0 +1,133 @@
+/* RoleEditModal.css - Role editing modal styles */
+
+.role-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 40px;
+}
+
+.role-modal-admin-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-modal-admin-label {
+  font-size: 14px;
+}
+
+.role-modal-template-section {
+  margin-bottom: 24px;
+}
+
+.role-modal-template-header {
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.role-modal-template-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.role-modal-clear-button {
+  color: #ff4d4f;
+  border: none;
+  padding: 4px;
+  min-width: auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  transition: all 0.2s ease;
+}
+
+.role-modal-clear-button:hover {
+  background-color: #ff4d4f;
+  color: white;
+}
+
+.role-modal-test-button {
+  min-width: 100px;
+}
+
+.role-modal-test-button--success {
+  background-color: #52c41a;
+  color: white;
+  border-color: #52c41a;
+}
+
+.role-modal-test-button--error {
+  background-color: #faad14;
+  color: white;
+  border-color: #faad14;
+}
+
+.role-modal-test-button--false {
+  background-color: #ff4d4f;
+  color: white;
+  border-color: #ff4d4f;
+}
+
+.role-modal-codemirror {
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.role-modal-insert-button {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 10;
+  font-size: 12px;
+  height: 28px;
+  padding: 0 8px;
+}
+
+.role-modal-template-help {
+  font-size: 12px;
+}
+
+.role-modal-restriction-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+
+.role-modal-service-button {
+  width: 100%;
+  height: 32px;
+  border: 2px dashed #d9d9d9;
+  background: transparent;
+  color: #999;
+  opacity: 0.6;
+  transition: all 0.3s ease;
+}
+
+.role-modal-service-button:hover {
+  opacity: 1;
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.role-modal-template-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-modal-codemirror-container {
+  position: relative;
+}
+
+.role-modal-fallback-help {
+  font-size: 12px;
+  font-style: italic;
+}
