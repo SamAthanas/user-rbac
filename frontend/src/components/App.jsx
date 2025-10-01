@@ -16,6 +16,7 @@ export function App() {
   const [showNotifications, setShowNotifications] = useState(true);
   const [sendEvent, setSendEvent] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sensors, setSensors] = useState({
     last_rejection: null,
     last_user_rejected: null
@@ -98,8 +99,11 @@ export function App() {
       console.log('Auth result:', auth);
       
       if (!auth) {
+        setIsAuthenticated(false);
         throw new Error('Not authenticated with Home Assistant');
       }
+      
+      setIsAuthenticated(true);
 
       // Fetch current user
       const userData = await fetchCurrentUser(auth);
@@ -136,12 +140,22 @@ export function App() {
       if (usersRes.status === 403 || domainsRes.status === 403 || entitiesRes.status === 403 || 
           servicesRes.status === 403 || configRes.status === 403) {
         const errorData = await configRes.json();
-        showError(`Access Denied: ${errorData.message || 'Admin access required'}`);
         
-        // Redirect to Home Assistant main page after 3 seconds
+        // Set admin access denied state
+        setApiError('Admin access required');
+        
+        // Show admin access denied notification
+        notification.error({
+          message: 'Access Denied',
+          description: 'Only administrators can access RBAC configuration. You will be redirected to the main page.',
+          placement: 'topRight',
+          duration: 5,
+        });
+        
+        // Redirect to Home Assistant main page after 5 seconds
         setTimeout(() => {
           window.location.href = errorData.redirect_url || '/';
-        }, 3000);
+        }, 5000);
         return;
       }
 
@@ -407,6 +421,55 @@ export function App() {
     return <Loading />;
   }
 
+  // Show authentication required banner if not logged in
+  if (!isAuthenticated) {
+    return (
+      <ConfigProvider theme={theme}>
+        <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+          <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+            <Header currentUser={currentUser} />
+            
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              minHeight: '60vh',
+              flexDirection: 'column',
+              gap: '24px'
+            }}>
+              <Alert
+                message={<div style={{ textAlign: 'center' }}>Authentication Required</div>}
+                description={
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ marginBottom: '24px' }}>
+                      You must be logged into Home Assistant to access RBAC configuration.
+                    </p>
+                    <Button 
+                      type="primary" 
+                      onClick={() => window.location.href = '/'}
+                      style={{ marginRight: '12px' }}
+                    >
+                      Go to Home Assistant Login
+                    </Button>
+                    <Button 
+                      onClick={() => loadData()}
+                      icon={<ReloadOutlined />}
+                    >
+                      Retry Authentication
+                    </Button>
+                  </div>
+                }
+                type="warning"
+                showIcon
+                style={{ maxWidth: '500px', width: '100%' }}
+              />
+            </div>
+          </Layout.Content>
+        </Layout>
+      </ConfigProvider>
+    );
+  }
+
   // Show integration configuration error if not configured
   if (!integrationConfigured) {
     return (
@@ -461,6 +524,8 @@ export function App() {
 
   // Show API error if there's a loading failure
   if (apiError) {
+    const isAdminError = apiError === 'Admin access required';
+    
     return (
       <ConfigProvider theme={theme}>
         <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
@@ -476,23 +541,38 @@ export function App() {
               gap: '24px'
             }}>
               <Alert
-                message={<div style={{ textAlign: 'center' }}>Failed to Load RBAC Data</div>}
+                message={<div style={{ textAlign: 'center' }}>
+                  {isAdminError ? 'Admin Access Required' : 'Failed to Load RBAC Data'}
+                </div>}
                 description={
                   <div style={{ textAlign: 'center' }}>
                     <p style={{ marginBottom: '24px' }}>
-                      {apiError}
+                      {isAdminError 
+                        ? 'Only administrators can access RBAC configuration. Please contact your system administrator or log in with an admin account.'
+                        : apiError
+                      }
                     </p>
-                    <Button 
-                      type="primary" 
-                      icon={<ReloadOutlined />}
-                      size="large"
-                      onClick={() => loadData(true)}
-                    >
-                      Retry Loading
-                    </Button>
+                    {isAdminError ? (
+                      <Button 
+                        type="primary" 
+                        onClick={() => window.location.href = '/'}
+                        style={{ marginRight: '12px' }}
+                      >
+                        Go to Home Assistant
+                      </Button>
+                    ) : (
+                      <Button 
+                        type="primary" 
+                        icon={<ReloadOutlined />}
+                        size="large"
+                        onClick={() => loadData(true)}
+                      >
+                        Retry Loading
+                      </Button>
+                    )}
                   </div>
                 }
-                type="error"
+                type={isAdminError ? "error" : "error"}
                 icon={<ExclamationCircleOutlined />}
                 showIcon
                 style={{ maxWidth: '500px', width: '100%' }}

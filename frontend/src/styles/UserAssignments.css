@@ -1,0 +1,56 @@
+/* UserAssignments.css - User assignments component styles */
+
+@keyframes adminGlow {
+  0% {
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 30px rgba(78, 205, 196, 0.5), 0 0 40px rgba(69, 183, 209, 0.3);
+  }
+}
+
+.user-assignments-description {
+  margin-bottom: 24px;
+}
+
+.user-assignments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.user-card {
+  height: 100%;
+}
+
+.user-card--admin {
+  border: 2px solid transparent;
+  background: linear-gradient(white, white) padding-box, 
+              linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57) border-box;
+  animation: adminGlow 2s ease-in-out infinite alternate;
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
+}
+
+.user-card-content {
+  width: 100%;
+  height: 80px;
+}
+
+.user-card-info {
+  flex: 1;
+}
+
+.user-card-id {
+  font-size: 12px;
+}
+
+.user-card-role-selector {
+  margin-left: auto;
+  min-width: 120px;
+}
+
+.user-assignments-empty {
+  text-align: center;
+  display: block;
+  padding: 40px 0;
+}

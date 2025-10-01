@@ -49,6 +49,8 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "enabled": True,
                 "show_notifications": True,
                 "send_event": False,
+                "last_rejection": "Never",
+                "last_user_rejected": "None",
                 "default_restrictions": {
                     "domains": {
                         "homeassistant": {
@@ -223,18 +225,25 @@ def _patch_service_registry(hass: HomeAssistant):
                     user = await self._hass.auth.async_get_user(context.user_id)
                     user_id = context.user_id
                     _LOGGER.warning(f"Got user from context: {user_id} ({user.name if user else 'Unknown'})")
+                    
+                    # Store user context for UI calls (only when we have a real context)
+                    if DOMAIN in self._hass.data:
+                        self._hass.data[DOMAIN]["last_service_user"] = user_id
                 else:
-                    # If no context, try to get from stored user context (for UI calls)
-                    if DOMAIN in self._hass.data and "last_service_user" in self._hass.data[DOMAIN]:
-                        user_id = self._hass.data[DOMAIN]["last_service_user"]
-                        user = await self._hass.auth.async_get_user(user_id)
-                        _LOGGER.warning(f"Got user from stored context: {user_id} ({user.name if user else 'Unknown'})")
+                    # If no context, check if this looks like a system/automation call
+                    # Physical device interactions typically don't have user context
+                    if not context or not hasattr(context, 'parent_id'):
+                        _LOGGER.debug(f"No user context for {domain}.{service} - likely system/automation call")
+                        user_id = None
                     else:
-                        _LOGGER.warning(f"No user context available for {domain}.{service} - context: {context}")
-                        
-                        # Store user context for UI calls
-                if user_id and DOMAIN in self._hass.data:
-                            self._hass.data[DOMAIN]["last_service_user"] = user_id
+                        # Only use stored context for calls that have a parent_id (indicating UI interaction)
+                        if DOMAIN in self._hass.data and "last_service_user" in self._hass.data[DOMAIN]:
+                            user_id = self._hass.data[DOMAIN]["last_service_user"]
+                            user = await self._hass.auth.async_get_user(user_id)
+                            _LOGGER.warning(f"Got user from stored context: {user_id} ({user.name if user else 'Unknown'})")
+                        else:
+                            _LOGGER.warning(f"No user context available for {domain}.{service} - context: {context}")
+                            user_id = None
                 
                 # Skip RBAC enforcement for Home Assistant built-in users
                 if user_id and _is_builtin_ha_user(user_id, self._hass):

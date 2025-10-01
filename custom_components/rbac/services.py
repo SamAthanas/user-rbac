@@ -839,22 +839,59 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 
-def _is_admin_user(hass: HomeAssistant, user_id: str) -> bool:
-    """Check if a user is an admin or if there are no admins configured."""
+async def _is_admin_user(hass: HomeAssistant, user_id: str, user_obj=None) -> bool:
+    """Check if a user is an admin (either HA native admin or RBAC admin role)."""
     try:
+        # First check if user is a Home Assistant native admin
+        try:
+            # If we have the user object directly, use it
+            if user_obj and hasattr(user_obj, 'is_admin'):
+                _LOGGER.debug(f"User object type: {type(user_obj)}, is_admin: {user_obj.is_admin}")
+                if user_obj.is_admin:
+                    _LOGGER.warning(f"User {user_id} is Home Assistant native admin")
+                    return True
+            else:
+                # Try different methods to get the user
+                user = None
+                if hasattr(hass.auth, 'async_get_user'):
+                    user = await hass.auth.async_get_user(user_id)
+                elif hasattr(hass.auth, 'get_user'):
+                    user = hass.auth.get_user(user_id)
+                elif hasattr(hass.auth, '_store') and hasattr(hass.auth._store, 'async_get_user'):
+                    user = await hass.auth._store.async_get_user(user_id)
+                
+                if user and hasattr(user, 'is_admin') and user.is_admin:
+                    _LOGGER.warning(f"User {user_id} is Home Assistant native admin")
+                    return True
+                elif user:
+                    _LOGGER.debug(f"User {user_id} found but not admin: {type(user)}")
+        except Exception as e:
+            _LOGGER.warning(f"Could not check HA native admin status for user {user_id}: {e}")
+        
+        # Then check RBAC admin role
         access_config = hass.data.get(DOMAIN, {}).get("access_config", {})
         users = access_config.get("users", {})
         
-        # Check if there are any admins configured
-        has_admins = any(role == "admin" for role in users.values())
+        # Check if current user has admin role
+        user_config = users.get(user_id)
+        if not user_config:
+            _LOGGER.warning(f"User {user_id} not found in RBAC configuration")
+            return False
         
-        # If no admins are configured, allow access to anyone
-        if not has_admins:
-            return True
+        user_role = user_config.get("role", "unknown")
+        if user_role == "unknown":
+            _LOGGER.warning(f"User {user_id} has no role assigned")
+            return False
         
-        # If admins exist, check if current user is admin
-        user_role = users.get(user_id, "unknown")
-        return user_role == "admin"
+        # Get role configuration and check admin flag
+        roles = access_config.get("roles", {})
+        role_config = roles.get(user_role, {})
+        is_rbac_admin = role_config.get("admin", False)
+        
+        if is_rbac_admin:
+            _LOGGER.warning(f"User {user_id} has RBAC admin role: {user_role}")
+        
+        return is_rbac_admin
         
     except Exception as e:
         _LOGGER.error(f"Error checking admin status: {e}")
@@ -906,11 +943,26 @@ def _update_rejection_sensors(hass: HomeAssistant, user_id: str, service: str):
             }
         )
         
-        # Update access config
+        # Update access config in memory
         access_config = hass.data.get(DOMAIN, {}).get("access_config", {})
         access_config["last_rejection"] = now
         access_config["last_user_rejected"] = user_name
         hass.data[DOMAIN]["access_config"] = access_config
+        
+        # Save to YAML file for persistence
+        try:
+            from . import _save_access_control_config
+            # Use asyncio to run the async function
+            import asyncio
+            loop = hass.loop
+            if loop.is_running():
+                # Schedule the save operation
+                asyncio.create_task(_save_access_control_config(hass, access_config))
+            else:
+                # Run directly if no event loop is running
+                loop.run_until_complete(_save_access_control_config(hass, access_config))
+        except Exception as save_error:
+            _LOGGER.error(f"Error saving rejection data to YAML: {save_error}")
         
     except Exception as e:
         _LOGGER.error(f"Error updating rejection sensors: {e}")
@@ -930,7 +982,7 @@ class RBACConfigView(HomeAssistantView):
         
         try:
             # Check admin permissions
-            if not _is_admin_user(hass, user.id):
+            if not await _is_admin_user(hass, user.id, user):
                 return self.json({
                     "error": "Admin access required",
                     "message": "Only administrators can access RBAC configuration",
@@ -953,7 +1005,7 @@ class RBACConfigView(HomeAssistantView):
         user = request["hass_user"]
         
         # Check admin permissions
-        if not _is_admin_user(hass, user.id):
+        if not await _is_admin_user(hass, user.id):
             return self.json({
                 "error": "Admin access required",
                 "message": "Only administrators can modify RBAC configuration",
@@ -1074,7 +1126,7 @@ class RBACUsersView(HomeAssistantView):
         user = request["hass_user"]
         
         # Check admin permissions
-        if not _is_admin_user(hass, user.id):
+        if not await _is_admin_user(hass, user.id):
             return self.json({
                 "error": "Admin access required",
                 "message": "Only administrators can access user information",
@@ -1140,7 +1192,7 @@ class RBACDomainsView(HomeAssistantView):
         user = request["hass_user"]
         
         # Check admin permissions
-        if not _is_admin_user(hass, user.id):
+        if not await _is_admin_user(hass, user.id):
             return self.json({
                 "error": "Admin access required",
                 "message": "Only administrators can access domain information",
@@ -1179,7 +1231,7 @@ class RBACEntitiesView(HomeAssistantView):
         user = request["hass_user"]
         
         # Check admin permissions
-        if not _is_admin_user(hass, user.id):
+        if not await _is_admin_user(hass, user.id):
             return self.json({
                 "error": "Admin access required",
                 "message": "Only administrators can access entity information",
@@ -1209,7 +1261,7 @@ class RBACServicesView(HomeAssistantView):
         user = request["hass_user"]
         
         # Check admin permissions
-        if not _is_admin_user(hass, user.id):
+        if not await _is_admin_user(hass, user.id):
             return self.json({
                 "error": "Admin access required",
                 "message": "Only administrators can access service information",

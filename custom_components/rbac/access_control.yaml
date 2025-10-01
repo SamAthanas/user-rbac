@@ -1,5 +1,10 @@
 version: '2.0'
 description: Role-Based Access Control Configuration
+enabled: true
+show_notifications: true
+send_event: false
+last_rejection: "Never"
+last_user_rejected: "None"
 default_restrictions:
   domains:
     light:

@@ -1,0 +1,50 @@
+/* Header.css - Header component styles */
+
+.header-container {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.header-title {
+  margin: 0;
+  color: #1976d2;
+}
+
+.header-subtitle {
+  margin: 0;
+  color: #666;
+}
+
+.header-user-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-user-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.header-user-dropdown:hover {
+  background-color: #f5f5f5;
+}
+
+.header-user-name {
+  font-size: 16px;
+}
+
+.header-user-role {
+  font-size: 12px;
+}
