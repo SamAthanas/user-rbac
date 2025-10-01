@@ -139,6 +139,25 @@ class RBACLastUserRejectedSensor(RBACBaseSensor):
         return access_config.get("last_user_rejected", "None")
 
 
+class RBACFrontendBlockingSensor(RBACBaseSensor):
+    """RBAC Frontend Blocking Enabled Sensor."""
+    
+    def __init__(self, hass, device_id=None):
+        """Initialize the sensor."""
+        super().__init__(hass, device_id)
+        self._attr_name = "RBAC Frontend Blocking"
+        self._attr_unique_id = f"{DOMAIN}_frontend_blocking"
+        self._attr_icon = "mdi:shield-search"
+        
+    @property
+    def state(self):
+        """Return the state of the sensor."""
+        access_config = self._hass.data.get(DOMAIN, {}).get("access_config", {})
+        frontend_blocking_enabled = access_config.get("frontend_blocking_enabled", True)
+        self._attr_icon = "mdi:shield-search" if frontend_blocking_enabled else "mdi:shield-off"
+        return "on" if frontend_blocking_enabled else "off"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry,
@@ -158,6 +177,7 @@ async def async_setup_entry(
         RBACSendEventsSensor(hass, device_id),
         RBACLastRejectionSensor(hass, device_id),
         RBACLastUserRejectedSensor(hass, device_id),
+        RBACFrontendBlockingSensor(hass, device_id),
     ]
     
     async_add_entities(sensors, True)

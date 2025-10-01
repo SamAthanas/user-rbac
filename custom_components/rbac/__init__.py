@@ -129,7 +129,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     user_count = len(access_config.get("users", {}))
     _LOGGER.info(f"RBAC Middleware initialized successfully with {user_count} configured users")
     # Register API endpoints
-    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACTemplateEvaluateView
+    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACTemplateEvaluateView, RBACFrontendBlockingView
     
     hass.http.register_view(RBACConfigView())
     hass.http.register_view(RBACUsersView())
@@ -139,6 +139,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.http.register_view(RBACCurrentUserView())
     hass.http.register_view(RBACSensorsView())
     hass.http.register_view(RBACTemplateEvaluateView())
+    hass.http.register_view(RBACFrontendBlockingView())
     
     _LOGGER.info("Registered RBAC API endpoints")    
     return True
