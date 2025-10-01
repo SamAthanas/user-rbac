@@ -227,25 +227,10 @@ def _patch_service_registry(hass: HomeAssistant):
                     user = await self._hass.auth.async_get_user(context.user_id)
                     user_id = context.user_id
                     _LOGGER.warning(f"Got user from context: {user_id} ({user.name if user else 'Unknown'})")
-                    
-                    # Store user context for UI calls (only when we have a real context)
-                    if DOMAIN in self._hass.data:
-                        self._hass.data[DOMAIN]["last_service_user"] = user_id
                 else:
-                    # If no context, check if this looks like a system/automation call
-                    # Physical device interactions typically don't have user context
-                    if not context or not hasattr(context, 'parent_id'):
-                        _LOGGER.debug(f"No user context for {domain}.{service} - likely system/automation call")
-                        user_id = None
-                    else:
-                        # Only use stored context for calls that have a parent_id (indicating UI interaction)
-                        if DOMAIN in self._hass.data and "last_service_user" in self._hass.data[DOMAIN]:
-                            user_id = self._hass.data[DOMAIN]["last_service_user"]
-                            user = await self._hass.auth.async_get_user(user_id)
-                            _LOGGER.warning(f"Got user from stored context: {user_id} ({user.name if user else 'Unknown'})")
-                        else:
-                            _LOGGER.warning(f"No user context available for {domain}.{service} - context: {context}")
-                            user_id = None
+                    # If no direct user_id, this is likely an automation/script call
+                    # These should be allowed to proceed without RBAC restrictions
+                    user_id = None
                 
                 # Skip RBAC enforcement for Home Assistant built-in users
                 if user_id and _is_builtin_ha_user(user_id, self._hass):
@@ -257,8 +242,8 @@ def _patch_service_registry(hass: HomeAssistant):
                 _LOGGER.warning(f"RBAC checking service call: {domain}.{service} by {user_name} (user_id: {user_id})")
                 
                 # If no user context, allow the call to proceed (likely from automation/script)
-                if not user_id:
-                    _LOGGER.warning(f"No user context for {domain}.{service} - allowing call to proceed (likely automation/script)")
+                if not user_id or user_id == "null" or user_id is None:
+                    _LOGGER.debug(f"No user context for {domain}.{service} - allowing call to proceed (likely automation/script)")
                     return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
                 
                 # Get access config
@@ -729,7 +714,7 @@ def _check_service_access_with_reason(
     """Check if a user has access to a specific service call with detailed reason."""
     
     # If no user_id, allow access (system calls)
-    if not user_id:
+    if not user_id or user_id == "null" or user_id is None:
         return True, "system call (no user_id)"
     
     # Get user configuration
@@ -855,6 +840,9 @@ def _check_service_access_with_reason(
     is_admin_role = role_config.get("admin", False)
     if is_admin_role:
         return True, f"admin role {user_role} has full access"
+    
+    # Check if role has deny_all enabled
+    deny_all = role_config.get("deny_all", False)
     
     # For non-admin roles, merge default restrictions with role-specific restrictions
     default_restrictions = access_config.get("default_restrictions", {})
@@ -1096,6 +1084,11 @@ def _check_service_access_with_reason(
                 return False, f"domain {domain} blocked by role {user_role}"
             elif service in role_services:  # Role blocks specific service
                 return False, f"service {domain}.{service} blocked by role {user_role}"
+    
+    # If deny_all is enabled and no allow rules matched, deny access
+    # Exception: Always allow system_log.write and browser_mod.notification even with deny_all enabled
+    if deny_all and not ((domain == "system_log" and service == "write") or (domain == "browser_mod" and service == "notification")):
+        return False, f"access denied by deny_all setting for role {user_role}"
     
     return True, f"access granted"
 

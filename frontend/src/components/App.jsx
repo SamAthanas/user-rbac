@@ -149,7 +149,7 @@ export function App() {
         notification.error({
           message: 'Access Denied',
           description: 'Only administrators can access RBAC configuration. You will be redirected to the main page.',
-          placement: 'topRight',
+          placement: 'bottomRight',
           duration: 5,
         });
         
@@ -205,7 +205,7 @@ export function App() {
         notification.success({
           message: 'Data Reloaded',
           description: 'RBAC configuration has been refreshed successfully.',
-          placement: 'topRight',
+          placement: 'bottomRight',
           duration: 2,
         });
       }
@@ -221,7 +221,7 @@ export function App() {
         notification.error({
           message: 'Error Loading Data',
           description: err.message,
-          placement: 'topRight',
+          placement: 'bottomRight',
           duration: 5,
         });
       }
@@ -265,7 +265,7 @@ export function App() {
       notification.success({
         message: 'Settings Updated',
         description: `RBAC is now ${checked ? 'enabled' : 'disabled'}`,
-        placement: 'topRight',
+        placement: 'bottomRight',
         duration: 3,
       });
     } catch (error) {
@@ -273,7 +273,7 @@ export function App() {
       notification.error({
         message: 'Error',
         description: error.message,
-        placement: 'topRight',
+        placement: 'bottomRight',
         duration: 5,
       });
     }
@@ -316,7 +316,7 @@ export function App() {
       notification.success({
         message: 'Settings Updated',
         description: 'RBAC settings have been updated',
-        placement: 'topRight',
+        placement: 'bottomRight',
         duration: 3,
       });
     } catch (error) {
@@ -324,7 +324,7 @@ export function App() {
       notification.error({
         message: 'Error',
         description: error.message,
-        placement: 'topRight',
+        placement: 'bottomRight',
         duration: 5,
       });
     }
@@ -403,7 +403,7 @@ export function App() {
     notification.success({
       message: 'Success',
       description: message,
-      placement: 'topRight',
+      placement: 'bottomRight',
       duration: 3,
     });
     
@@ -417,7 +417,7 @@ export function App() {
     notification.error({
       message: 'Error',
       description: message,
-      placement: 'topRight',
+      placement: 'bottomRight',
       duration: 5,
     });
   };
