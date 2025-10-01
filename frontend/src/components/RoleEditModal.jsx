@@ -50,7 +50,8 @@ export function RoleEditModal({
         Object.entries(roleConfig.permissions.domains).forEach(([domain, config]) => {
           domainRestrictions.push({
             domain,
-            services: config.services || []
+            services: config.services || [],
+            allow: config.allow || false
           });
         });
       }
@@ -59,7 +60,8 @@ export function RoleEditModal({
         Object.entries(roleConfig.permissions.entities).forEach(([entity, config]) => {
           entityRestrictions.push({
             entity,
-            services: config.services || []
+            services: config.services || [],
+            allow: config.allow || false
           });
         });
       }
@@ -122,13 +124,15 @@ export function RoleEditModal({
       
       domainRestrictions.forEach(restriction => {
         domains[restriction.domain] = {
-          services: restriction.services
+          services: restriction.services,
+          allow: restriction.allow || false
         };
       });
       
       entityRestrictions.forEach(restriction => {
         entities[restriction.entity] = {
-          services: restriction.services
+          services: restriction.services,
+          allow: restriction.allow || false
         };
       });
       
@@ -163,7 +167,7 @@ export function RoleEditModal({
 
   const addDomainRestriction = () => {
     const newIndex = domainRestrictions.length;
-    setDomainRestrictions([...domainRestrictions, { domain: '', services: [] }]);
+    setDomainRestrictions([...domainRestrictions, { domain: '', services: [], allow: false }]);
     setShowDomainSelects({ ...showDomainSelects, [newIndex]: false });
   };
 
@@ -193,7 +197,7 @@ export function RoleEditModal({
 
   const addEntityRestriction = () => {
     const newIndex = entityRestrictions.length;
-    setEntityRestrictions([...entityRestrictions, { entity: '', services: [] }]);
+    setEntityRestrictions([...entityRestrictions, { entity: '', services: [], allow: false }]);
     setShowEntitySelects({ ...showEntitySelects, [newIndex]: false });
   };
 
@@ -666,9 +670,9 @@ export function RoleEditModal({
                   ))}
                 </Select>
               </Col>
-              <Col span={12}>
+              <Col span={10}>
                 {!showDomainSelects[index] ? (
-                  <Tooltip title="Add specific service restrictions">
+                  <Tooltip title={restriction.allow ? "Add specific services to allow" : "Add specific service restrictions"}>
                     <Button
                       type="dashed"
                       icon={<PlusOutlined />}
@@ -693,14 +697,14 @@ export function RoleEditModal({
                         e.currentTarget.style.color = '#999';
                       }}
                     >
-                      Restrict Services
+                      {restriction.allow ? "Allow Services" : "Restrict Services"}
                     </Button>
                   </Tooltip>
                 ) : (
                   <Select
                     mode="multiple"
                     showSearch
-                    placeholder="Select services to block (empty = block all)"
+                    placeholder={restriction.allow ? "Select services to allow (empty = allow all)" : "Select services to block (empty = block all)"}
                     value={restriction.services}
                     onChange={(value) => updateDomainRestriction(index, 'services', value)}
                     style={{ width: '100%' }}
@@ -713,6 +717,17 @@ export function RoleEditModal({
                     ))}
                   </Select>
                 )}
+              </Col>
+              <Col span={2}>
+                <Tooltip title={restriction.allow ? "Allow this domain/services" : "Block this domain/services"}>
+                  <Switch
+                    size="small"
+                    checked={restriction.allow}
+                    onChange={(checked) => updateDomainRestriction(index, 'allow', checked)}
+                    checkedChildren="✓"
+                    unCheckedChildren="✗"
+                  />
+                </Tooltip>
               </Col>
               <Col span={2}>
                 <Button
@@ -756,9 +771,9 @@ export function RoleEditModal({
                   ))}
                 </Select>
               </Col>
-              <Col span={12}>
+              <Col span={10}>
                 {!showEntitySelects[index] ? (
-                  <Tooltip title="Add specific service restrictions">
+                  <Tooltip title={restriction.allow ? "Add specific services to allow" : "Add specific service restrictions"}>
                     <Button
                       type="dashed"
                       icon={<PlusOutlined />}
@@ -783,14 +798,14 @@ export function RoleEditModal({
                         e.currentTarget.style.color = '#999';
                       }}
                     >
-                      Restrict Services
+                      {restriction.allow ? "Allow Services" : "Restrict Services"}
                     </Button>
                   </Tooltip>
                 ) : (
                   <Select
                     mode="multiple"
                     showSearch
-                    placeholder="Select services to block (empty = block all)"
+                    placeholder={restriction.allow ? "Select services to allow (empty = allow all)" : "Select services to block (empty = block all)"}
                     value={restriction.services}
                     onChange={(value) => updateEntityRestriction(index, 'services', value)}
                     style={{ width: '100%' }}
@@ -803,6 +818,17 @@ export function RoleEditModal({
                     ))}
                   </Select>
                 )}
+              </Col>
+              <Col span={2}>
+                <Tooltip title={restriction.allow ? "Allow this entity/services" : "Block this entity/services"}>
+                  <Switch
+                    size="small"
+                    checked={restriction.allow}
+                    onChange={(checked) => updateEntityRestriction(index, 'allow', checked)}
+                    checkedChildren="✓"
+                    unCheckedChildren="✗"
+                  />
+                </Tooltip>
               </Col>
               <Col span={2}>
                 <Button
