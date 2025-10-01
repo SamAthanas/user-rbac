@@ -3,7 +3,7 @@ description: Role-Based Access Control Configuration
 enabled: true
 show_notifications: true
 send_event: false
-frontend_blocking_enabled: true
+frontend_blocking_enabled: false
 last_rejection: "Never"
 last_user_rejected: "None"
 default_restrictions:

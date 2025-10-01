@@ -11,6 +11,7 @@ Its ideal for users who want to experiment with basic role based access, and res
 - **Modernized Frontend for Configuration**: Alternatively use the admin frontend to configure the access control rules.
 - **Domain and Entity Level Control**: Restrict access at both domain and entity levels.
 - **Action/Service call Control**: Restrict actions on specific domains or entities, or restrict all actions tied to an entity .
+- **Frontend Blocking**: Remove blocked entities from the native HA quickbar
 - **Dynamic Configuration**: Reload configuration without restarting Home Assistant
 - **Notifications+Events**: Persistant notifications and events are sent when system denies action call.
 - **Service Management**: Built-in services to manage and inspect configuration.
@@ -18,6 +19,9 @@ Its ideal for users who want to experiment with basic role based access, and res
 
 ## 🚀 Installation
 - Copy the files to your server first
+  - Component: custom_components/rbac
+  - Frontend: www/community/rbac
+  - Frontend Script (Add to resources, Javascript Module): /local/community/rbac/rbac.js
 - Search for the 'RBAC' (Role Based Access Control) Integration and install it
 - Ensure you are logged in as an admin user, and then access this page <YOUR_HA_DOMAIN>/local/community/rbac/config.html
 - Configure Roles and Role Assignments

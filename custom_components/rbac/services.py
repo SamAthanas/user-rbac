@@ -1083,13 +1083,15 @@ class RBACConfigView(HomeAssistantView):
                 access_config["default_restrictions"] = restrictions
                 
             elif action == "update_settings":
-                # Update enabled, show_notifications, send_event settings
+                # Update enabled, show_notifications, send_event, frontend_blocking_enabled settings
                 if "enabled" in data:
                     access_config["enabled"] = data["enabled"]
                 if "show_notifications" in data:
                     access_config["show_notifications"] = data["show_notifications"]
                 if "send_event" in data:
                     access_config["send_event"] = data["send_event"]
+                if "frontend_blocking_enabled" in data:
+                    access_config["frontend_blocking_enabled"] = data["frontend_blocking_enabled"]
                 
             # Preserve runtime fields that shouldn't be saved to YAML
             config_to_save = access_config.copy()

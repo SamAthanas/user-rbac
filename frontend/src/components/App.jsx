@@ -15,6 +15,7 @@ export function App() {
   const [enabled, setEnabled] = useState(true);
   const [showNotifications, setShowNotifications] = useState(true);
   const [sendEvent, setSendEvent] = useState(false);
+  const [frontendBlocking, setFrontendBlocking] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sensors, setSensors] = useState({
@@ -196,6 +197,7 @@ export function App() {
       if (config) {
         setShowNotifications(config.show_notifications !== undefined ? config.show_notifications : true);
         setSendEvent(config.send_event !== undefined ? config.send_event : false);
+        setFrontendBlocking(config.frontend_blocking_enabled !== undefined ? config.frontend_blocking_enabled : false);
       }
       
       // Show success notification for manual reload
@@ -306,6 +308,9 @@ export function App() {
       }
       if (settings.send_event !== undefined) {
         setSendEvent(settings.send_event);
+      }
+      if (settings.frontend_blocking_enabled !== undefined) {
+        setFrontendBlocking(settings.frontend_blocking_enabled);
       }
 
       notification.success({
@@ -680,6 +685,27 @@ export function App() {
                     {sendEvent && (
                       <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
                         Event: rbac_access_denied
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Tooltip title={frontendBlocking ? "Frontend blocking is enabled" : "Frontend blocking is disabled"}>
+                      <Switch
+                        checked={frontendBlocking}
+                        onChange={(checked) => handleSettingsUpdate({ frontend_blocking_enabled: checked })}
+                        checkedChildren="On"
+                        unCheckedChildren="Off"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Restricts the ha-quick-bar to only allowed entities">
+                      <span style={{ color: '#666', fontSize: '14px', cursor: 'help' }}>
+                        Frontend Blocking
+                      </span>
+                    </Tooltip>
+                    {frontendBlocking && (
+                      <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                        Add frontend script to www/community/rbac/rbac.js
                       </span>
                     )}
                   </div>
