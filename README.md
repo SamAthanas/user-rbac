@@ -18,7 +18,8 @@ Its ideal for users who want to experiment with basic role based access, and res
 - **YAML-Based Configuration**: Ability to define access control rules in a YAML file.
 - **Modernized Frontend for Configuration**: Alternatively use the admin frontend to configure the access control rules.
 - **Domain and Entity Level Control**: Restrict access at both domain and entity levels.
-- **Action/Service call Control**: Restrict actions on specific domains or entities, or restrict all actions tied to an entity .
+- **Action/Service call Control**: Restrict actions on specific domains or entities, or restrict all actions tied to an entity.
+- **Allow All and Deny All settings supported**: Configure roles to allow everything, with specific blocked entities or block everything, with specific allowed entities.
 - **Frontend Blocking**: Remove blocked entities from the native HA quickbar
 - **Dynamic Configuration**: Reload configuration without restarting Home Assistant
 - **Notifications+Events**: Persistant notifications and events are sent when system denies action call.
@@ -44,7 +45,6 @@ Its ideal for users who want to experiment with basic role based access, and res
 - Admin users or users assigned an admin role will be able to access the RBAC configuration page 
 - Its possible to assign templates to each role. Templates will be evaluated each time a user that has that role executes a service call. The template will determine if the users role should be used, or if it should fallback to a different role with an entierly different set of permissions. This makes it possible to create more complex auth systems based on current states from your HA instance.
 - Default domain/enttiy blocklists are supported. Any non-admin user will always have these restrictions enforced.
-- Currently only a deny list is supported.
 - Frontend is built using Preact that compiles into a static page, for easier state management and component isolation.
 
 ## 🤝 Contributing

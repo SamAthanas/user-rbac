@@ -260,18 +260,6 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
         Create and manage roles with specific permissions.
       </Typography.Paragraph>
       
-      {/* Add Role Button */}
-      <Space style={{ marginBottom: 24 }}>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleCreateRole}
-          disabled={loading}
-        >
-          Add Role
-        </Button>
-      </Space>
-
       {/* Existing Roles */}
       <Typography.Title level={4}>Existing Roles</Typography.Title>
       
@@ -383,6 +371,13 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
                         </Tag>
                       </Tooltip>
                     )}
+                    {role.deny_all && (
+                      <Tooltip title="Deny All mode enabled - blocks by default">
+                        <Tag color="red">
+                          Deny All
+                        </Tag>
+                      </Tooltip>
+                    )}
                     {Object.keys(role.permissions?.domains || {}).length > 0 && (
                       <Tooltip 
                         title={
@@ -424,6 +419,17 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
           ))}
         </Row>
       )}
+
+      {/* Add Role Button */}
+      <Button
+        type="dashed"
+        icon={<PlusOutlined />}
+        onClick={handleCreateRole}
+        disabled={loading}
+        style={{ width: '100%', marginTop: 16 }}
+      >
+        Add Role
+      </Button>
 
       {/* Role Edit Modal */}
       <RoleEditModal

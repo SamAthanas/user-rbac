@@ -23,6 +23,7 @@ export function RoleEditModal({
   const [domainRestrictions, setDomainRestrictions] = useState([]);
   const [entityRestrictions, setEntityRestrictions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [denyAll, setDenyAll] = useState(false);
   const [templateTestResult, setTemplateTestResult] = useState(null); // null, 'loading', 'true', 'false', 'error'
   const [templateTestError, setTemplateTestError] = useState('');
   const [templateValue, setTemplateValue] = useState('');
@@ -37,6 +38,7 @@ export function RoleEditModal({
       form.setFieldsValue({
         description: roleConfig.description || '',
         admin: roleConfig.admin || false,
+        deny_all: roleConfig.deny_all || false,
         fallbackRole: roleConfig.fallbackRole || '',
         domains: roleConfig.permissions?.domains || {},
         entities: roleConfig.permissions?.entities || {}
@@ -70,6 +72,7 @@ export function RoleEditModal({
       setEntityRestrictions(entityRestrictions);
       setShowTemplate(!!roleConfig.template);
       setIsAdmin(roleConfig.admin || false);
+      setDenyAll(roleConfig.deny_all || false);
       setTemplateTestResult(null);
       setTemplateTestError('');
       setTemplateValue(roleConfig.template || '');
@@ -96,6 +99,8 @@ export function RoleEditModal({
       setEntityRestrictions([]);
       setShowTemplate(false);
       setIsAdmin(false);
+      setDenyAll(false);
+      setShowConversionModal(false);
       setTemplateTestResult(null);
       setTemplateTestError('');
       setTemplateValue('');
@@ -113,6 +118,38 @@ export function RoleEditModal({
       });
     }
   }, [visible]);
+
+  const [showConversionModal, setShowConversionModal] = useState(false);
+
+  const showConversionWarning = () => {
+    setShowConversionModal(true);
+  };
+
+  const handleConversionChoice = (choice) => {
+    setShowConversionModal(false);
+    
+    if (choice === 'convert') {
+      // Convert all restrictions to allow mode
+      const updatedDomainRestrictions = domainRestrictions.map(restriction => ({
+        ...restriction,
+        allow: true
+      }));
+      const updatedEntityRestrictions = entityRestrictions.map(restriction => ({
+        ...restriction,
+        allow: true
+      }));
+      setDomainRestrictions(updatedDomainRestrictions);
+      setEntityRestrictions(updatedEntityRestrictions);
+    } else if (choice === 'clear') {
+      // Clear all restrictions
+      setDomainRestrictions([]);
+      setEntityRestrictions([]);
+    } else if (choice === 'cancel') {
+      // Cancel - disable deny_all and keep existing restrictions
+      setDenyAll(false);
+      form.setFieldsValue({ deny_all: false });
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -139,6 +176,7 @@ export function RoleEditModal({
       const roleData = {
         description: values.description,
         admin: values.admin || false,
+        deny_all: values.deny_all || false,
         permissions: {
           domains,
           entities
@@ -167,7 +205,7 @@ export function RoleEditModal({
 
   const addDomainRestriction = () => {
     const newIndex = domainRestrictions.length;
-    setDomainRestrictions([...domainRestrictions, { domain: '', services: [], allow: false }]);
+    setDomainRestrictions([...domainRestrictions, { domain: '', services: [], allow: denyAll }]);
     setShowDomainSelects({ ...showDomainSelects, [newIndex]: false });
   };
 
@@ -197,7 +235,7 @@ export function RoleEditModal({
 
   const addEntityRestriction = () => {
     const newIndex = entityRestrictions.length;
-    setEntityRestrictions([...entityRestrictions, { entity: '', services: [], allow: false }]);
+    setEntityRestrictions([...entityRestrictions, { entity: '', services: [], allow: denyAll }]);
     setShowEntitySelects({ ...showEntitySelects, [newIndex]: false });
   };
 
@@ -343,7 +381,7 @@ export function RoleEditModal({
         notification.error({
           message: 'Template Test Failed',
           description: 'Please enter a template first',
-          placement: 'topRight',
+          placement: 'bottomRight',
           duration: 3,
         });
         return;
@@ -377,7 +415,7 @@ export function RoleEditModal({
         notification.error({
           message: 'Template Evaluation Error',
           description: data.error,
-          placement: 'topRight',
+          placement: 'bottomRight',
           duration: 5,
         });
       }
@@ -389,33 +427,65 @@ export function RoleEditModal({
       notification.error({
         message: 'Template Test Failed',
         description: error.message,
-        placement: 'topRight',
+        placement: 'bottomRight',
         duration: 5,
       });
     }
   };
 
   return (
-    <Modal
-      title={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: '40px' }}>
-          <span>{roleName ? `Edit Role: ${roleName}` : 'Create New Role'}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Text style={{ fontSize: '14px' }}>Admin Role</Text>
-            <Switch
-              checked={isAdmin}
-              onChange={(checked) => {
-                setIsAdmin(checked);
-                form.setFieldsValue({ admin: checked });
-              }}
-            />
+    <>
+      <Modal
+        title={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: '40px' }}>
+            <span>{roleName ? `Edit Role: ${roleName}` : 'Create New Role'}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Text style={{ fontSize: '14px' }}>Admin Role</Text>
+                <Switch
+                  checked={isAdmin}
+                  onChange={(checked) => {
+                    setIsAdmin(checked);
+                    form.setFieldsValue({ admin: checked });
+                  }}
+                />
+              </div>
+              {!isAdmin && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Text style={{ fontSize: '14px' }}>
+                    {denyAll ? 'Deny All' : 'Allow All'}
+                  </Text>
+                  <Tooltip title={denyAll ? "Switch to Allow All (permit by default)" : "Switch to Deny All (block by default)"}>
+                    <Switch
+                      checked={denyAll}
+                      checkedChildren="✗"
+                      unCheckedChildren="✓"
+                      style={{
+                        backgroundColor: denyAll ? '#ff4d4f' : '#52c41a'
+                      }}
+                      onChange={(checked) => {
+                        setDenyAll(checked);
+                        form.setFieldsValue({ deny_all: checked });
+                        if (checked) {
+                          // Check if there are existing domains/entities with allow=false to convert
+                          const hasBlockingRestrictions = domainRestrictions.some(r => !r.allow) || entityRestrictions.some(r => !r.allow);
+                          if (hasBlockingRestrictions) {
+                            // Show conversion warning dialog
+                            showConversionWarning();
+                          }
+                        }
+                      }}
+                    />
+                  </Tooltip>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      }
-      open={visible}
-      onCancel={onCancel}
-      onOk={handleSave}
-      width={800}
+        }
+        open={visible}
+        onCancel={onCancel}
+        onOk={handleSave}
+        width={800}
       okText="Save Role"
       cancelText="Cancel"
     >
@@ -442,7 +512,12 @@ export function RoleEditModal({
           <Input placeholder="Enter role description" />
         </Form.Item>
 
+
         <Form.Item name="admin" hidden>
+          <Input />
+        </Form.Item>
+
+        <Form.Item name="deny_all" hidden>
           <Input />
         </Form.Item>
 
@@ -649,7 +724,7 @@ export function RoleEditModal({
         )}
 
 
-        <Divider>Domain Restrictions</Divider>
+        <Divider>Domains</Divider>
         
         {domainRestrictions.map((restriction, index) => (
           <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }} data-restriction-index={index}>
@@ -672,7 +747,7 @@ export function RoleEditModal({
               </Col>
               <Col span={10}>
                 {!showDomainSelects[index] ? (
-                  <Tooltip title={restriction.allow ? "Add specific services to allow" : "Add specific service restrictions"}>
+                  <Tooltip title={restriction.allow ? "Add specific services to allow" : "Add specific services"}>
                     <Button
                       type="dashed"
                       icon={<PlusOutlined />}
@@ -697,14 +772,14 @@ export function RoleEditModal({
                         e.currentTarget.style.color = '#999';
                       }}
                     >
-                      {restriction.allow ? "Allow Services" : "Restrict Services"}
+                      {restriction.allow ? "Allow Services" : "Services"}
                     </Button>
                   </Tooltip>
                 ) : (
                   <Select
                     mode="multiple"
                     showSearch
-                    placeholder={restriction.allow ? "Select services to allow (empty = allow all)" : "Select services to block (empty = block all)"}
+                    placeholder={restriction.allow ? "Select services to allow (empty = allow all)" : "Select services (empty = block all)"}
                     value={restriction.services}
                     onChange={(value) => updateDomainRestriction(index, 'services', value)}
                     style={{ width: '100%' }}
@@ -726,6 +801,10 @@ export function RoleEditModal({
                     onChange={(checked) => updateDomainRestriction(index, 'allow', checked)}
                     checkedChildren="✓"
                     unCheckedChildren="✗"
+                    disabled={denyAll && restriction.allow}
+                    style={{
+                      backgroundColor: restriction.allow ? '#52c41a' : '#ff4d4f'
+                    }}
                   />
                 </Tooltip>
               </Col>
@@ -747,10 +826,10 @@ export function RoleEditModal({
           onClick={addDomainRestriction}
           style={{ width: '100%', marginBottom: 16 }}
         >
-          Add Domain Restriction
+          Add Domain
         </Button>
 
-        <Divider>Entity Restrictions</Divider>
+        <Divider>Entities</Divider>
         
         {entityRestrictions.map((restriction, index) => (
           <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }} data-restriction-index={index}>
@@ -773,7 +852,7 @@ export function RoleEditModal({
               </Col>
               <Col span={10}>
                 {!showEntitySelects[index] ? (
-                  <Tooltip title={restriction.allow ? "Add specific services to allow" : "Add specific service restrictions"}>
+                  <Tooltip title={restriction.allow ? "Add specific services to allow" : "Add specific services"}>
                     <Button
                       type="dashed"
                       icon={<PlusOutlined />}
@@ -798,14 +877,14 @@ export function RoleEditModal({
                         e.currentTarget.style.color = '#999';
                       }}
                     >
-                      {restriction.allow ? "Allow Services" : "Restrict Services"}
+                      {restriction.allow ? "Allow Services" : "Services"}
                     </Button>
                   </Tooltip>
                 ) : (
                   <Select
                     mode="multiple"
                     showSearch
-                    placeholder={restriction.allow ? "Select services to allow (empty = allow all)" : "Select services to block (empty = block all)"}
+                    placeholder={restriction.allow ? "Select services to allow (empty = allow all)" : "Select services (empty = block all)"}
                     value={restriction.services}
                     onChange={(value) => updateEntityRestriction(index, 'services', value)}
                     style={{ width: '100%' }}
@@ -827,6 +906,10 @@ export function RoleEditModal({
                     onChange={(checked) => updateEntityRestriction(index, 'allow', checked)}
                     checkedChildren="✓"
                     unCheckedChildren="✗"
+                    disabled={denyAll && restriction.allow}
+                    style={{
+                      backgroundColor: restriction.allow ? '#52c41a' : '#ff4d4f'
+                    }}
                   />
                 </Tooltip>
               </Col>
@@ -848,11 +931,34 @@ export function RoleEditModal({
           onClick={addEntityRestriction}
           style={{ width: '100%' }}
         >
-          Add Entity Restriction
+          Add Entity
         </Button>
           </>
         )}
       </Form>
-    </Modal>
+      </Modal>
+      
+      {/* Conversion Warning Modal */}
+      <Modal
+        title="Convert Existing Restrictions?"
+        open={showConversionModal}
+        onCancel={() => handleConversionChoice('cancel')}
+        footer={[
+          <Button key="cancel" onClick={() => handleConversionChoice('cancel')}>
+            Cancel
+          </Button>,
+          <Button key="clear" onClick={() => handleConversionChoice('clear')}>
+            Clear All
+          </Button>,
+          <Button key="convert" type="primary" onClick={() => handleConversionChoice('convert')}>
+            Convert to Allow
+          </Button>
+        ]}
+      >
+        <div>
+          <p>You have blocking restrictions configured. What would you like to do?</p>
+        </div>
+      </Modal>
+    </>
   );
 }
