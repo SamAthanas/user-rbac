@@ -1,5 +1,13 @@
-# 🏠 Home Assistant RBAC Middleware
-Finally, a flexible Role-Based Access Control (RBAC) middleware component for Home Assistant that intercepts service calls and enforces access control based on YAML configuration. There is also a friendly frontend GUI as an alternative to configuring the YAML directly.
+<p align="center">
+  <img src="logo.png" alt="Home Assistant RBAC Logo" width="180" />
+</p>
+
+<h1 align="center">🏠 Home Assistant RBAC Middleware</h1>
+
+<p align="center">
+  Finally, a flexible Role-Based Access Control (RBAC) middleware component for Home Assistant that intercepts service calls and enforces access control based on YAML configuration.<br>
+  There is also a friendly frontend GUI as an alternative to configuring the YAML directly.
+</p>
 
 ## ⚠️ Notice:
 This application is under active development and is not stable yet!
