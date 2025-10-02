@@ -2,6 +2,7 @@
 import logging
 import os
 from typing import Any, Dict, Optional
+from datetime import datetime
 
 import yaml
 
@@ -50,6 +51,7 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "show_notifications": True,
                 "send_event": False,
                 "frontend_blocking_enabled": False,
+                "log_deny_list": False,
                 "last_rejection": "Never",
                 "last_user_rejected": "None",
                 "default_restrictions": {
@@ -130,7 +132,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     user_count = len(access_config.get("users", {}))
     _LOGGER.info(f"RBAC Middleware initialized successfully with {user_count} configured users")
     # Register API endpoints
-    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACTemplateEvaluateView, RBACFrontendBlockingView
+    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACDenyLogView, RBACTemplateEvaluateView, RBACFrontendBlockingView
     
     hass.http.register_view(RBACConfigView())
     hass.http.register_view(RBACUsersView())
@@ -139,10 +141,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.http.register_view(RBACServicesView())
     hass.http.register_view(RBACCurrentUserView())
     hass.http.register_view(RBACSensorsView())
+    hass.http.register_view(RBACDenyLogView())
     hass.http.register_view(RBACTemplateEvaluateView())
     hass.http.register_view(RBACFrontendBlockingView())
     
-    _LOGGER.info("Registered RBAC API endpoints")    
+    _LOGGER.info("Registered RBAC API endpoints")
+    
+    # Register sidebar panel (check if we have a config entry with options)
+    await _register_sidebar_panel(hass)
+    
     return True
 
 
@@ -156,10 +163,52 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     # Set up the RBAC device with config entry
     await _setup_rbac_device(hass, entry)
     
+    # Set up options update listener
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
+    
     # Just call the main setup function with the config data
     return await async_setup(hass, config_data)
 
 
+async def async_update_options(hass: HomeAssistant, entry) -> None:
+    """Update options."""
+    _LOGGER.info("RBAC options updated")
+    
+    # Handle sidebar panel visibility changes
+    should_show_panel = entry.options.get("show_sidebar_panel", True)
+    
+    if should_show_panel:
+        # Register the panel if it should be shown
+        await _register_sidebar_panel(hass)
+    else:
+        # Remove the panel if it should be hidden
+        try:
+            from homeassistant.components.frontend import async_remove_panel
+            await async_remove_panel(hass, "rbac-config")
+            _LOGGER.info("RBAC sidebar panel removed due to option change")
+        except Exception as e:
+            _LOGGER.debug(f"Could not remove RBAC sidebar panel: {e}")
+
+
+async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
+    """Unload RBAC config entry."""
+    _LOGGER.info("Unloading RBAC Middleware")
+    
+    # Unregister the sidebar panel
+    try:
+        from homeassistant.components.frontend import async_remove_panel
+        await async_remove_panel(hass, "rbac-config")
+        _LOGGER.info("Successfully removed RBAC sidebar panel")
+    except Exception as e:
+        _LOGGER.debug(f"Could not remove RBAC sidebar panel: {e}")
+    
+    # Unload sensor platform
+    try:
+        await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+    except Exception as e:
+        _LOGGER.debug(f"Could not unload sensor platform: {e}")
+    
+    return True
 
 
 async def _setup_rbac_device(hass: HomeAssistant, config_entry):
@@ -338,6 +387,13 @@ def _patch_service_registry(hass: HomeAssistant):
                             user_config = users.get(user_id)
                             if user_config:
                                 user_role = user_config.get("role", "unknown")
+                        
+                        # Log denial to file if logging is enabled
+                        if access_config.get("log_deny_list", False):
+                            try:
+                                _log_denial_to_file(self._hass, user_id or "unknown", user_name, user_role, domain, service, reason)
+                            except Exception as log_error:
+                                _LOGGER.error(f"Failed to log denial: {log_error}")
                         
                         raise HomeAssistantError(
                             f"Access denied: {user_name} cannot call {domain}.{service} from role '{user_role}' - {reason}"
@@ -1256,6 +1312,138 @@ async def _save_access_control_config(hass: HomeAssistant, config: Dict[str, Any
     if success:
         _LOGGER.info(f"Saved access control configuration to {config_path}")
     return success
+
+
+def _log_denial_to_file(hass: HomeAssistant, user_id: str, user_name: str, user_role: str, domain: str, service: str, reason: str):
+    """Log access denial to deny_list.log file."""
+    try:
+        # Get the log file path
+        log_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "deny_list.log")
+        
+        # Create timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Format log entry
+        log_entry = f"[{timestamp}] DENIED - User: {user_name} ({user_id}) | Role: {user_role} | Service: {domain}.{service} | Reason: {reason}\n"
+        
+        # Append to log file
+        with open(log_path, 'a', encoding='utf-8') as log_file:
+            log_file.write(log_entry)
+        
+        _LOGGER.debug(f"Logged denial to deny_list.log: {user_name} -> {domain}.{service}")
+        
+    except Exception as e:
+        _LOGGER.error(f"Failed to log denial to file: {e}")
+
+
+def _get_deny_log_contents(hass: HomeAssistant) -> str:
+    """Get the contents of the deny_list.log file."""
+    try:
+        log_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "deny_list.log")
+        
+        if not os.path.exists(log_path):
+            return "No deny log file found. Denials will be logged here when they occur."
+        
+        with open(log_path, 'r', encoding='utf-8') as log_file:
+            contents = log_file.read()
+        
+        if not contents.strip():
+            return "Deny log file is empty. No access denials have been logged yet."
+        
+        return contents
+        
+    except Exception as e:
+        _LOGGER.error(f"Failed to read deny log file: {e}")
+        return f"Error reading deny log file: {e}"
+
+
+def _clear_deny_log(hass: HomeAssistant) -> bool:
+    """Clear the contents of the deny_list.log file."""
+    try:
+        log_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "deny_list.log")
+        
+        # Create an empty file or truncate existing file
+        with open(log_path, 'w', encoding='utf-8') as log_file:
+            log_file.write("")
+        
+        _LOGGER.info("Deny log file cleared successfully")
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(f"Failed to clear deny log file: {e}")
+        return False
+
+
+async def _register_sidebar_panel(hass: HomeAssistant):
+    """Register RBAC configuration panel in the sidebar."""
+    
+    # Check if sidebar panel should be shown based on config entry options
+    should_show_panel = True
+    
+    # Look for RBAC config entries
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        # Check the options for show_sidebar_panel setting
+        should_show_panel = entry.options.get("show_sidebar_panel", True)
+        break  # Use the first (and likely only) RBAC entry
+    
+    if not should_show_panel:
+        _LOGGER.info("RBAC sidebar panel disabled via config entry options")
+        return
+    
+    async def _do_panel_registration():
+        """Perform the actual panel registration."""
+        try:
+            from homeassistant.components.frontend import async_register_built_in_panel, async_remove_panel
+            
+            # First try to remove any existing panel to avoid conflicts
+            try:
+                await async_remove_panel(hass, "rbac-config")
+            except Exception:
+                pass  # Panel might not exist, which is fine
+            
+            # Now register the panel
+            async_register_built_in_panel(
+                hass,
+                component_name="iframe",
+                sidebar_title="RBAC Config",
+                sidebar_icon="mdi:shield-account",
+                frontend_url_path="rbac-config",
+                config={
+                    "url": "/local/community/rbac/config.html",
+                    "title": "RBAC Configuration"
+                },
+                require_admin=True
+            )
+            _LOGGER.info("Successfully registered RBAC sidebar panel")
+            return True
+            
+        except Exception as e:
+            _LOGGER.debug(f"Panel registration attempt failed: {e}")
+            return False
+    
+    # Try immediate registration first
+    if await _do_panel_registration():
+        return
+    
+    # If immediate registration fails, listen for the frontend_ready event
+    async def _on_frontend_ready(event):
+        """Handle frontend ready event."""
+        if await _do_panel_registration():
+            return
+        
+        # If still failing, try one more time with a small delay
+        import asyncio
+        await asyncio.sleep(2)
+        
+        if not await _do_panel_registration():
+            _LOGGER.warning("Could not register RBAC sidebar panel. Users will need to access the config page manually at /local/community/rbac/config.html")
+    
+    # Listen for the frontend ready event
+    try:
+        hass.bus.async_listen_once("frontend_ready", _on_frontend_ready)
+        _LOGGER.info("RBAC panel registration scheduled for when frontend is ready")
+    except Exception as e:
+        _LOGGER.warning(f"Could not schedule RBAC panel registration: {e}. Users will need to access the config page manually at /local/community/rbac/config.html")
 
 
 def _is_top_level_user(hass: HomeAssistant, user_id: str) -> bool:

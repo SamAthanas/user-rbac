@@ -1,74 +1,39 @@
 version: '2.0'
-description: Role-Based Access Control Configuration
+description: RBAC Access Control Configuration
 enabled: true
 show_notifications: true
 send_event: false
 frontend_blocking_enabled: false
-last_rejection: "Never"
-last_user_rejected: "None"
+log_deny_list: false
+last_rejection: Never
+last_user_rejected: None
 default_restrictions:
   domains:
-    light:
-      services: []  # Empty services = block all services
-      allow: false  # Block rule (default)
     homeassistant:
-      services: []  # Empty services = block all services
-      allow: false  # Block rule (default)
+      hide: false
+      services:
+      - restart
+      - stop
+      - reload_config_entry
+      - check_config
+    system_log:
+      hide: true
+      services:
+      - write
+      - clear
+    hassio:
+      hide: true
+      services:
+      - host_reboot
+      - host_shutdown
+      - supervisor_update
+      - supervisor_restart
   entities: {}
+users: {}
 roles:
   admin:
-    description: Administrator with full access
-    admin: true  # Admin role bypasses all restrictions
-    permissions:
-      domains: {}
-      entities: {}
+    description: Administrator with most permissions
   user:
     description: Standard user with limited permissions
-    admin: false  # Non-admin role uses default restrictions + role-specific
-    permissions:
-      domains:
-        homeassistant:
-          services:
-          - restart
-          - stop
-          - reload_config_entry
-          - check_config
-        hassio:
-          services:
-          - host_reboot
-          - host_shutdown
-          - supervisor_update
-          - supervisor_restart
-        light:
-          services: []  # Block all light services
-          allow: false  # Block rule
-      entities:
-        light.kitchen:
-          services: ["turn_on", "turn_off"]  # Allow specific services
-          allow: true  # Allow rule - overrides domain blocking
   guest:
     description: Guest with minimal permissions
-    admin: false  # Non-admin role uses default restrictions + role-specific
-    permissions:
-      domains:
-        homeassistant:
-          services:
-          - restart
-          - stop
-          - reload_config_entry
-          - check_config
-        hassio:
-          services:
-          - host_reboot
-          - host_shutdown
-          - supervisor_update
-          - supervisor_restart
-        system_log:
-          services:
-          - clear
-      entities: {}
-users:
-  539d48e809fa43978561b2ff219b18a0:
-    role: admin
-  afa89e2ba24e4d57b1a892a5b0754214:
-    role: user

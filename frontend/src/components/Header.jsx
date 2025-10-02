@@ -2,6 +2,15 @@ import { Avatar, Typography, Dropdown, Button } from 'antd';
 import { HomeOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
 
 export function Header({ currentUser = null }) {
+  // Check if we're running inside an iframe (sidebar panel)
+  const isInIframe = () => {
+    try {
+      return window.self !== window.top;
+    } catch (e) {
+      return true;
+    }
+  };
+
   const getUserPicture = (user) => {
     console.log('Header getUserPicture called with user:', user);
     
@@ -41,7 +50,13 @@ export function Header({ currentUser = null }) {
     const protocol = url.protocol;
     const port = url.port ? `:${url.port}` : '';
     const integrationUrl = `${protocol}//${domain}${port}/config/integrations/integration/rbac`;
-    window.location.href = integrationUrl;
+    
+    // If we're in an iframe (sidebar panel), open in new tab
+    if (isInIframe()) {
+      window.open(integrationUrl, '_blank');
+    } else {
+      window.location.href = integrationUrl;
+    }
   };
 
   const handleLogout = () => {
@@ -56,12 +71,13 @@ export function Header({ currentUser = null }) {
   };
 
   const userMenuItems = [
-    {
+    // Only show "Return to Home Assistant" if not in iframe (sidebar panel)
+    ...(!isInIframe() ? [{
       key: 'home',
       label: 'Return to Home Assistant',
       icon: <HomeOutlined />,
       onClick: handleReturnToHA,
-    },
+    }] : []),
     {
       key: 'integration',
       label: 'RBAC Integration',

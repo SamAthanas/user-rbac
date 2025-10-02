@@ -63,18 +63,18 @@ REMOVE_USER_RESTRICTION_SCHEMA = vol.Schema({
 # New service schemas for device management
 UPDATE_USER_DOMAIN_RESTRICTIONS_SCHEMA = vol.Schema({
     vol.Required("person"): cv.string,
-    vol.Optional("domains"): vol.Any(dict, None),
+    vol.Optional("domains"): vol.Any(dict, cv.string, None),
 })
 
 UPDATE_USER_ENTITY_RESTRICTIONS_SCHEMA = vol.Schema({
     vol.Required("person"): cv.string,
-    vol.Optional("entities"): vol.Any(dict, None),
+    vol.Optional("entities"): vol.Any(dict, cv.string, None),
 })
 
 UPDATE_USER_SERVICE_RESTRICTIONS_SCHEMA = vol.Schema({
     vol.Required("person"): cv.string,
     vol.Required("domain"): cv.string,
-    vol.Optional("services"): vol.Any(dict, None),
+    vol.Optional("services"): vol.Any(dict, cv.string, None),
 })
 
 GET_AVAILABLE_DOMAINS_SCHEMA = vol.Schema({})
@@ -349,9 +349,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             )
             return
         
-        # Convert single service to list if needed
+        # Convert services input to list
         if isinstance(services, str):
-            services = [services]
+            # Handle comma-separated string input from UI
+            services = [s.strip() for s in services.split(',') if s.strip()]
+        elif not isinstance(services, list):
+            # Convert other types to list
+            services = [services] if services else []
         
         # Check if caller has top-level access
         caller_id = call.context.user_id if call.context else None
@@ -436,7 +440,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_update_user_domain_restrictions(call: ServiceCall) -> None:
         """Handle the update_user_domain_restrictions service call."""
         person_entity_id = call.data["person"]
-        domains = call.data.get("domains", {})
+        domains_input = call.data.get("domains", {})
+        
+        # Parse domains input (could be JSON string or dict)
+        if isinstance(domains_input, str):
+            try:
+                import json
+                domains = json.loads(domains_input) if domains_input.strip() else {}
+            except json.JSONDecodeError as e:
+                _LOGGER.error(f"Invalid JSON in domains field: {e}")
+                await hass.components.persistent_notification.async_create(
+                    f"Invalid JSON in domains field: {e}",
+                    title="RBAC Error"
+                )
+                return
+        else:
+            domains = domains_input
         
         # Extract user_id from person entity
         try:
@@ -518,7 +537,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_update_user_entity_restrictions(call: ServiceCall) -> None:
         """Handle the update_user_entity_restrictions service call."""
         person_entity_id = call.data["person"]
-        entities = call.data.get("entities", {})
+        entities_input = call.data.get("entities", {})
+        
+        # Parse entities input (could be JSON string or dict)
+        if isinstance(entities_input, str):
+            try:
+                import json
+                entities = json.loads(entities_input) if entities_input.strip() else {}
+            except json.JSONDecodeError as e:
+                _LOGGER.error(f"Invalid JSON in entities field: {e}")
+                await hass.components.persistent_notification.async_create(
+                    f"Invalid JSON in entities field: {e}",
+                    title="RBAC Error"
+                )
+                return
+        else:
+            entities = entities_input
         
         # Extract user_id from person entity
         try:
@@ -601,7 +635,22 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Handle the update_user_service_restrictions service call."""
         person_entity_id = call.data["person"]
         domain = call.data["domain"]
-        services = call.data.get("services", {})
+        services_input = call.data.get("services", {})
+        
+        # Parse services input (could be JSON string or dict)
+        if isinstance(services_input, str):
+            try:
+                import json
+                services = json.loads(services_input) if services_input.strip() else {}
+            except json.JSONDecodeError as e:
+                _LOGGER.error(f"Invalid JSON in services field: {e}")
+                await hass.components.persistent_notification.async_create(
+                    f"Invalid JSON in services field: {e}",
+                    title="RBAC Error"
+                )
+                return
+        else:
+            services = services_input
         
         # Extract user_id from person entity
         try:
@@ -1083,7 +1132,7 @@ class RBACConfigView(HomeAssistantView):
                 access_config["default_restrictions"] = restrictions
                 
             elif action == "update_settings":
-                # Update enabled, show_notifications, send_event, frontend_blocking_enabled settings
+                # Update enabled, show_notifications, send_event, frontend_blocking_enabled, log_deny_list settings
                 if "enabled" in data:
                     access_config["enabled"] = data["enabled"]
                 if "show_notifications" in data:
@@ -1092,6 +1141,8 @@ class RBACConfigView(HomeAssistantView):
                     access_config["send_event"] = data["send_event"]
                 if "frontend_blocking_enabled" in data:
                     access_config["frontend_blocking_enabled"] = data["frontend_blocking_enabled"]
+                if "log_deny_list" in data:
+                    access_config["log_deny_list"] = data["log_deny_list"]
                 
             # Preserve runtime fields that shouldn't be saved to YAML
             config_to_save = access_config.copy()
@@ -1382,6 +1433,81 @@ class RBACSensorsView(HomeAssistantView):
         except Exception as e:
             _LOGGER.error(f"Error getting RBAC sensors: {e}")
             return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACDenyLogView(HomeAssistantView):
+    """View to get deny log contents."""
+    
+    url = "/api/rbac/deny-log"
+    name = "api:rbac:deny-log"
+    requires_auth = True
+    
+    async def get(self, request):
+        """Get deny log file contents."""
+        try:
+            hass = request.app["hass"]
+            user = request["hass_user"]
+            
+            # Check admin permissions
+            if not await _is_admin_user(hass, user.id):
+                return self.json({
+                    "error": "Admin access required",
+                    "message": "Only administrators can access deny logs",
+                    "redirect_url": "/"
+                }, status_code=403)
+            
+            # Get deny log contents
+            from . import _get_deny_log_contents
+            log_contents = _get_deny_log_contents(hass)
+            
+            return self.json({
+                "success": True,
+                "contents": log_contents
+            })
+            
+        except Exception as e:
+            _LOGGER.error(f"Error getting deny log: {e}")
+            return self.json({
+                "success": False,
+                "error": str(e)
+            }, status_code=500)
+    
+    async def delete(self, request):
+        """Clear deny log file contents."""
+        try:
+            hass = request.app["hass"]
+            user = request["hass_user"]
+            
+            # Check admin permissions
+            if not await _is_admin_user(hass, user.id):
+                return self.json({
+                    "error": "Admin access required",
+                    "message": "Only administrators can clear deny logs",
+                    "redirect_url": "/"
+                }, status_code=403)
+            
+            # Clear deny log file
+            from . import _clear_deny_log
+            success = _clear_deny_log(hass)
+            
+            if success:
+                _LOGGER.info(f"Deny log cleared by user {user.name} ({user.id})")
+                return self.json({
+                    "success": True,
+                    "message": "Deny log cleared successfully"
+                })
+            else:
+                return self.json({
+                    "success": False,
+                    "error": "Failed to clear deny log"
+                }, status_code=500)
+            
+        except Exception as e:
+            _LOGGER.error(f"Error clearing deny log: {e}")
+            return self.json({
+                "success": False,
+                "error": str(e)
+            }, status_code=500)
 
 
 class RBACTemplateEvaluateView(HomeAssistantView):
