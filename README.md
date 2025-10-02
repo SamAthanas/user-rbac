@@ -13,6 +13,8 @@
 This application is under active development and is not stable yet!
 Its ideal for users who want to experiment with basic role based access, and restrict others from being able to call specific actions on your home server. (Perhaps this will finally put an end to people expoiting the search feature or widgets to call actions that are not on your dashboard!) This component has been tested on my own instance quite a bit, but there will likely be some bugs that remain. Feel free to contribute directly or raise an issue if there is something you would like tweaked.
 
+Due to the nature of this application patching core functions, its possible that it will break in future updates of home assistant. If this occurs, you may disable the component until its updated to work with the latest version. Disabling the component will cause home assistant to return back to its normal state, without any of the rbac blocking features.
+
 ## ✨ Features
 - **Service Call Interception**: Automatically intercepts all Home Assistant service calls.
 - **YAML-Based Configuration**: Ability to define access control rules in a YAML file.
