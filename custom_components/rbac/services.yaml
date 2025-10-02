@@ -86,16 +86,34 @@ add_user_restriction:
         person: {}
     domain:
       name: Domain
-      description: The service domain to restrict
+      description: The service domain to restrict (e.g., light, switch, homeassistant)
       required: true
       selector:
-        text:
+        select:
+          options:
+            - light
+            - switch
+            - homeassistant
+            - climate
+            - media_player
+            - cover
+            - fan
+            - lock
+            - vacuum
+            - camera
+            - notify
+            - automation
+            - script
+            - scene
+          custom_value: true
     services:
       name: Services
-      description: List of services to restrict
+      description: Comma-separated list of services to restrict (e.g., turn_on,turn_off,toggle)
       required: true
+      example: "turn_on,turn_off,toggle"
       selector:
-        object:
+        text:
+          multiline: true
 
 remove_user_restriction:
   name: Remove user restriction
@@ -112,7 +130,23 @@ remove_user_restriction:
       description: The service domain to remove restrictions from
       required: true
       selector:
-        text:
+        select:
+          options:
+            - light
+            - switch
+            - homeassistant
+            - climate
+            - media_player
+            - cover
+            - fan
+            - lock
+            - vacuum
+            - camera
+            - notify
+            - automation
+            - script
+            - scene
+          custom_value: true
 
 get_user_device_info:
   name: Get user device info
@@ -137,10 +171,12 @@ update_user_domain_restrictions:
         person: {}
     domains:
       name: Restricted Domains
-      description: List of domains to restrict for this user
+      description: JSON object defining domain restrictions (e.g., {"light":{"services":["turn_on","turn_off"],"allow":false}})
       required: false
+      example: '{"light":{"services":["turn_on","turn_off"],"allow":false},"switch":{"allow":true}}'
       selector:
-        object:
+        text:
+          multiline: true
 
 update_user_entity_restrictions:
   name: Update user entity restrictions
@@ -154,10 +190,12 @@ update_user_entity_restrictions:
         person: {}
     entities:
       name: Restricted Entities
-      description: List of entities to restrict for this user
+      description: JSON object defining entity restrictions (e.g., {"light.living_room":{"services":["turn_on"],"allow":false}})
       required: false
+      example: '{"light.living_room":{"services":["turn_on"],"allow":false},"switch.bedroom":{"allow":true}}'
       selector:
-        object:
+        text:
+          multiline: true
 
 update_user_service_restrictions:
   name: Update user service restrictions
@@ -174,13 +212,31 @@ update_user_service_restrictions:
       description: The domain to update service restrictions for
       required: true
       selector:
-        text:
+        select:
+          options:
+            - light
+            - switch
+            - homeassistant
+            - climate
+            - media_player
+            - cover
+            - fan
+            - lock
+            - vacuum
+            - camera
+            - notify
+            - automation
+            - script
+            - scene
+          custom_value: true
     services:
       name: Restricted Services
-      description: List of services to restrict for this domain
+      description: JSON object defining service restrictions (e.g., {"turn_on":{"allow":true},"turn_off":{"allow":false}})
       required: false
+      example: '{"turn_on":{"allow":true},"turn_off":{"allow":false},"toggle":{"allow":false}}'
       selector:
-        object:
+        text:
+          multiline: true
 
 get_available_domains:
   name: Get available domains
@@ -201,4 +257,30 @@ get_available_services:
       description: The domain to get services for
       required: true
       selector:
-        text:
+        select:
+          options:
+            - light
+            - switch
+            - homeassistant
+            - climate
+            - media_player
+            - cover
+            - fan
+            - lock
+            - vacuum
+            - camera
+            - notify
+            - automation
+            - script
+            - scene
+            - input_boolean
+            - input_number
+            - input_select
+            - input_text
+            - group
+            - person
+            - zone
+            - sun
+            - weather
+            - calendar
+          custom_value: true

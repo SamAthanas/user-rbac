@@ -33,6 +33,7 @@ Due to the nature of this application patching core functions, its possible that
   - Component: custom_components/rbac
   - Frontend: www/community/rbac
   - Frontend Script (Add to resources, Javascript Module): /local/community/rbac/rbac.js
+- OR utilize the deploy.sh script to deploy to your instance directly. this requires setting up a .env file in the root of this project to configure your ssh settings
 - Search for the 'RBAC' (Role Based Access Control) Integration and install it
 - Ensure you are logged in as an admin user, and then access this page <YOUR_HA_DOMAIN>/local/community/rbac/config.html
 - Configure Roles and Role Assignments

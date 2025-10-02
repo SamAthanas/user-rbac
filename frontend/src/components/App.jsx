@@ -4,6 +4,7 @@ import { Header } from './Header';
 import { DefaultRestrictions } from './DefaultRestrictions';
 import { RolesManagement } from './RolesManagement';
 import { UserAssignments } from './UserAssignments';
+import { DenyLogModal } from './DenyLogModal';
 import { Loading } from './Loading';
 import { ExclamationCircleOutlined, SettingOutlined, ReloadOutlined } from '@ant-design/icons';
 
@@ -16,6 +17,8 @@ export function App() {
   const [showNotifications, setShowNotifications] = useState(true);
   const [sendEvent, setSendEvent] = useState(false);
   const [frontendBlocking, setFrontendBlocking] = useState(false);
+  const [logDenyList, setLogDenyList] = useState(false);
+  const [denyLogModalVisible, setDenyLogModalVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sensors, setSensors] = useState({
@@ -198,6 +201,7 @@ export function App() {
         setShowNotifications(config.show_notifications !== undefined ? config.show_notifications : true);
         setSendEvent(config.send_event !== undefined ? config.send_event : false);
         setFrontendBlocking(config.frontend_blocking_enabled !== undefined ? config.frontend_blocking_enabled : false);
+        setLogDenyList(config.log_deny_list !== undefined ? config.log_deny_list : false);
       }
       
       // Show success notification for manual reload
@@ -311,6 +315,9 @@ export function App() {
       }
       if (settings.frontend_blocking_enabled !== undefined) {
         setFrontendBlocking(settings.frontend_blocking_enabled);
+      }
+      if (settings.log_deny_list !== undefined) {
+        setLogDenyList(settings.log_deny_list);
       }
 
       notification.success({
@@ -754,6 +761,37 @@ export function App() {
                       </span>
                     )}
                   </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Tooltip title={logDenyList ? "Deny list logging is enabled" : "Deny list logging is disabled"}>
+                      <Switch
+                        checked={logDenyList}
+                        onChange={(checked) => handleSettingsUpdate({ log_deny_list: checked })}
+                        checkedChildren="On"
+                        unCheckedChildren="Off"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Logs all access denials to deny_list.log file">
+                      <span style={{ color: '#666', fontSize: '14px', cursor: 'help' }}>
+                        Deny List Logging
+                      </span>
+                    </Tooltip>
+                    {logDenyList && (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() => setDenyLogModalVisible(true)}
+                        style={{ padding: '0 4px', height: 'auto', fontSize: '12px' }}
+                      >
+                        View Logs
+                      </Button>
+                    )}
+                    {logDenyList && (
+                      <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                        File: custom_components/rbac/deny_list.log
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Card>
               
@@ -901,6 +939,12 @@ export function App() {
           </Collapse>
         </Layout.Content>
       </Layout>
+      
+      {/* Deny Log Modal */}
+      <DenyLogModal
+        visible={denyLogModalVisible}
+        onClose={() => setDenyLogModalVisible(false)}
+      />
     </ConfigProvider>
   );
 }
