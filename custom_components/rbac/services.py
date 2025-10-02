@@ -1143,6 +1143,8 @@ class RBACConfigView(HomeAssistantView):
                     access_config["frontend_blocking_enabled"] = data["frontend_blocking_enabled"]
                 if "log_deny_list" in data:
                     access_config["log_deny_list"] = data["log_deny_list"]
+                if "allow_chained_actions" in data:
+                    access_config["allow_chained_actions"] = data["allow_chained_actions"]
                 
             # Preserve runtime fields that shouldn't be saved to YAML
             config_to_save = access_config.copy()

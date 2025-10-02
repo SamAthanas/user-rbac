@@ -52,6 +52,7 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "send_event": False,
                 "frontend_blocking_enabled": False,
                 "log_deny_list": False,
+                "allow_chained_actions": False,
                 "last_rejection": "Never",
                 "last_user_rejected": "None",
                 "default_restrictions": {
@@ -261,6 +262,31 @@ def _patch_service_registry(hass: HomeAssistant):
         async def async_call(self, domain, service, service_data=None, blocking=False, context=None, **kwargs):
             """Intercept service calls for RBAC enforcement."""
             try:
+                # Check if this is a chained action from an allowed script/automation
+                access_config = self._hass.data.get(DOMAIN, {}).get("access_config", {})
+                allow_chained_actions = access_config.get("allow_chained_actions", False)
+                
+                # If chained actions are enabled, check if this call is from within an allowed script/automation context
+                if allow_chained_actions and context:
+                    # Initialize allowed_contexts if it doesn't exist
+                    if 'allowed_contexts' not in self._hass.data[DOMAIN]:
+                        self._hass.data[DOMAIN]['allowed_contexts'] = set()
+                    
+                    allowed_contexts = self._hass.data[DOMAIN]['allowed_contexts']
+                    
+                    # Check if this context or its parent context is in the allowed set
+                    context_chain = []
+                    if hasattr(context, 'id') and context.id:
+                        context_chain.append(context.id)
+                    if hasattr(context, 'parent_id') and context.parent_id:
+                        context_chain.append(context.parent_id)
+                    
+                    # Check if any context in the chain is allowed
+                    for ctx_id in context_chain:
+                        if ctx_id in allowed_contexts:
+                            _LOGGER.debug(f"Allowing chained action {domain}.{service} from allowed context {ctx_id}")
+                            return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
+                
                 # Skip RBAC enforcement for certain domains that are needed for API functionality
                 excluded_domains = ['http', 'auth', 'system_log', 'persistent_notification']
                 if domain in excluded_domains:
@@ -404,7 +430,30 @@ def _patch_service_registry(hass: HomeAssistant):
                     _LOGGER.debug(f"Service call allowed: {domain}.{service} by {user_name}")
                 else:
                     _LOGGER.debug(f"Service call allowed (blocking disabled): {domain}.{service} by {user_name}")
-                return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
+                
+                # Track allowed script/automation contexts for chained actions
+                context_id_added = None
+                if allow_chained_actions and context and (domain == 'script' or domain == 'automation'):
+                    # Initialize allowed_contexts if it doesn't exist
+                    if 'allowed_contexts' not in self._hass.data[DOMAIN]:
+                        self._hass.data[DOMAIN]['allowed_contexts'] = set()
+                    
+                    # Add this specific context to allowed contexts
+                    if hasattr(context, 'id') and context.id:
+                        self._hass.data[DOMAIN]['allowed_contexts'].add(context.id)
+                        context_id_added = context.id
+                        _LOGGER.debug(f"Added context {context.id} to allowed contexts for {domain}.{service}")
+                
+                try:
+                    return await self._original.async_call(domain, service, service_data, blocking, context, **kwargs)
+                finally:
+                    # Remove the specific context from allowed contexts after the script/automation completes
+                    if context_id_added:
+                        try:
+                            self._hass.data[DOMAIN]['allowed_contexts'].discard(context_id_added)
+                            _LOGGER.debug(f"Removed context {context_id_added} from allowed contexts for {domain}.{service}")
+                        except (KeyError, AttributeError):
+                            pass  # Context might have been cleaned up already
                 
             except HomeAssistantError:
                 # Re-raise access denied errors
@@ -1143,7 +1192,35 @@ def _check_service_access_with_reason(
     
     # If deny_all is enabled and no allow rules matched, deny access
     # Exception: Always allow system_log.write and browser_mod.notification even with deny_all enabled
+    # Also check if there are entity-level allow rules that should override deny_all
     if deny_all and not ((domain == "system_log" and service == "write") or (domain == "browser_mod" and service == "notification")):
+        # Check if this service call has entity-level allow permissions that should override deny_all
+        entity_ids = []
+        
+        # Check for entity_id in service_data
+        if service_data and "entity_id" in service_data:
+            entity_id = service_data["entity_id"]
+            if isinstance(entity_id, str):
+                entity_ids = [entity_id]
+            else:
+                entity_ids = entity_id if isinstance(entity_id, list) else []
+        
+        # For script/automation calls, also check if domain.service matches an entity permission
+        if domain in ["script", "automation"]:
+            entity_name = f"{domain}.{service}"
+            entity_ids.append(entity_name)
+        
+        # Check role entity permissions for allow rules
+        role_entities = permissions.get("entities", {})
+        for eid in entity_ids:
+            if eid in role_entities:
+                entity_config = role_entities[eid]
+                entity_allow = entity_config.get("allow", False)
+                if entity_allow:
+                    entity_services = entity_config.get("services", [])
+                    if not entity_services or service in entity_services:
+                        return True, f"entity {eid} service {service} allowed by role entity permissions (overrides deny_all)"
+        
         return False, f"access denied by deny_all setting for role {user_role}"
     
     return True, f"access granted"

@@ -18,6 +18,7 @@ export function App() {
   const [sendEvent, setSendEvent] = useState(false);
   const [frontendBlocking, setFrontendBlocking] = useState(false);
   const [logDenyList, setLogDenyList] = useState(false);
+  const [allowChainedActions, setAllowChainedActions] = useState(false);
   const [denyLogModalVisible, setDenyLogModalVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -202,6 +203,7 @@ export function App() {
         setSendEvent(config.send_event !== undefined ? config.send_event : false);
         setFrontendBlocking(config.frontend_blocking_enabled !== undefined ? config.frontend_blocking_enabled : false);
         setLogDenyList(config.log_deny_list !== undefined ? config.log_deny_list : false);
+        setAllowChainedActions(config.allow_chained_actions !== undefined ? config.allow_chained_actions : false);
       }
       
       // Show success notification for manual reload
@@ -318,6 +320,9 @@ export function App() {
       }
       if (settings.log_deny_list !== undefined) {
         setLogDenyList(settings.log_deny_list);
+      }
+      if (settings.allow_chained_actions !== undefined) {
+        setAllowChainedActions(settings.allow_chained_actions);
       }
 
       notification.success({
@@ -789,6 +794,27 @@ export function App() {
                     {logDenyList && (
                       <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
                         File: custom_components/rbac/deny_list.log
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Tooltip title={allowChainedActions ? "Chained actions are allowed" : "Chained actions are blocked"}>
+                      <Switch
+                        checked={allowChainedActions}
+                        onChange={(checked) => handleSettingsUpdate({ allow_chained_actions: checked })}
+                        checkedChildren="On"
+                        unCheckedChildren="Off"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Allow actions within scripts/automations to run if the parent script/automation was allowed">
+                      <span style={{ color: '#666', fontSize: '14px', cursor: 'help' }}>
+                        Allow Chained Actions
+                      </span>
+                    </Tooltip>
+                    {allowChainedActions && (
+                      <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                        Actions in allowed scripts/automations bypass RBAC
                       </span>
                     )}
                   </div>

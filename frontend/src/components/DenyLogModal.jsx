@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { Modal, Button, Typography, Alert, Spin, Input } from 'antd';
 import { FileTextOutlined, ReloadOutlined, ClearOutlined } from '@ant-design/icons';
 
@@ -9,6 +9,14 @@ export function DenyLogModal({ visible, onClose }) {
   const [loading, setLoading] = useState(false);
   const [logContents, setLogContents] = useState('');
   const [error, setError] = useState(null);
+  const isMountedRef = useRef(true);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Get authentication token
   const getAuth = async () => {
@@ -55,22 +63,29 @@ export function DenyLogModal({ visible, onClose }) {
 
       const data = await response.json();
       if (data.success) {
-        setLogContents(data.contents);
+        if (isMountedRef.current) {
+          setLogContents(data.contents);
+        }
       } else {
         throw new Error(data.error || 'Failed to fetch deny log');
       }
     } catch (error) {
       console.error('Error fetching deny log:', error);
-      setError(error.message);
-      setLogContents('');
+      if (isMountedRef.current) {
+        setError(error.message);
+        setLogContents('');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   // Load log contents when modal opens
   useEffect(() => {
     if (visible) {
+      isMountedRef.current = true; // Ensure we're marked as mounted when modal opens
       fetchDenyLog();
     }
   }, [visible]);
@@ -85,6 +100,8 @@ export function DenyLogModal({ visible, onClose }) {
       cancelText: 'Cancel',
       onOk: async () => {
         try {
+          if (!isMountedRef.current) return;
+          
           setLoading(true);
           setError(null);
           
@@ -108,23 +125,28 @@ export function DenyLogModal({ visible, onClose }) {
 
           const data = await response.json();
           if (data.success) {
-            setLogContents('');
-            Modal.success({
-              title: 'Log Cleared',
-              content: 'Deny log has been cleared successfully.',
-            });
+            if (isMountedRef.current) {
+              setLogContents('');
+              // Don't show success modal to avoid conflicts - the cleared log content is feedback enough
+            }
           } else {
             throw new Error(data.error || 'Failed to clear deny log');
           }
         } catch (error) {
           console.error('Error clearing deny log:', error);
-          setError(error.message);
-          Modal.error({
-            title: 'Clear Failed',
-            content: `Failed to clear deny log: ${error.message}`,
-          });
+          if (isMountedRef.current) {
+            setError(error.message);
+            // Only show error modal for actual errors
+            Modal.error({
+              title: 'Clear Failed',
+              content: `Failed to clear deny log: ${error.message}`,
+              getContainer: false, // Prevent portal conflicts
+            });
+          }
         } finally {
-          setLoading(false);
+          if (isMountedRef.current) {
+            setLoading(false);
+          }
         }
       }
     });
