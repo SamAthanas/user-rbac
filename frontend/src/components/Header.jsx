@@ -1,5 +1,5 @@
 import { Avatar, Typography, Dropdown, Button } from 'antd';
-import { HomeOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
+import { HomeOutlined, LogoutOutlined, SettingOutlined, ExportOutlined } from '@ant-design/icons';
 
 export function Header({ currentUser = null }) {
   // Check if we're running inside an iframe (sidebar panel)
@@ -59,6 +59,14 @@ export function Header({ currentUser = null }) {
     }
   };
 
+  const handleOpenInNewTab = () => {
+    // Open the config page in a new tab using the direct URL
+    const currentUrl = window.location.href;
+    const url = new URL(currentUrl);
+    const configUrl = `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/local/community/rbac/config.html`;
+    window.open(configUrl, '_blank');
+  };
+
   const handleLogout = () => {
     // Clear HA tokens from localStorage and sessionStorage
     localStorage.removeItem('hassTokens');
@@ -71,6 +79,13 @@ export function Header({ currentUser = null }) {
   };
 
   const userMenuItems = [
+    // Show "Open in New Tab" as first option if in iframe (sidebar panel)
+    ...(isInIframe() ? [{
+      key: 'newTab',
+      label: 'Open in New Tab',
+      icon: <ExportOutlined />,
+      onClick: handleOpenInNewTab,
+    }] : []),
     // Only show "Return to Home Assistant" if not in iframe (sidebar panel)
     ...(!isInIframe() ? [{
       key: 'home',

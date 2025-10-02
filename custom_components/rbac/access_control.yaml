@@ -5,6 +5,7 @@ show_notifications: true
 send_event: false
 frontend_blocking_enabled: false
 log_deny_list: false
+allow_chained_actions: false
 last_rejection: Never
 last_user_rejected: None
 default_restrictions:
