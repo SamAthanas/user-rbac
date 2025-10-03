@@ -1,7 +1,10 @@
-import { Avatar, Typography, Dropdown, Button } from 'antd';
-import { HomeOutlined, LogoutOutlined, SettingOutlined, ExportOutlined } from '@ant-design/icons';
+import { Avatar, Typography, Dropdown, Button, Tooltip } from 'antd';
+import { HomeOutlined, LogoutOutlined, SettingOutlined, ExportOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
+import { useState } from 'react';
 
-export function Header({ currentUser = null }) {
+export function Header({ currentUser = null, isDarkMode = false, onThemeToggle }) {
+  const [isAnimating, setIsAnimating] = useState(false);
+
   // Check if we're running inside an iframe (sidebar panel)
   const isInIframe = () => {
     try {
@@ -78,6 +81,16 @@ export function Header({ currentUser = null }) {
     window.location.href = `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/auth/authorize`;
   };
 
+  const handleThemeToggle = () => {
+    setIsAnimating(true);
+    onThemeToggle();
+    
+    // Remove animation class after animation completes
+    setTimeout(() => {
+      setIsAnimating(false);
+    }, 1000);
+  };
+
   const userMenuItems = [
     // Show "Open in New Tab" as first option if in iframe (sidebar panel)
     ...(isInIframe() ? [{
@@ -109,21 +122,51 @@ export function Header({ currentUser = null }) {
 
   return (
     <div style={{ 
-      background: 'white',
+      background: isDarkMode ? '#1f1f1f' : 'white',
       padding: '20px',
       borderRadius: '8px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      boxShadow: isDarkMode ? '0 2px 4px rgba(255,255,255,0.1)' : '0 2px 4px rgba(0,0,0,0.1)',
       display: 'flex', 
       justifyContent: 'space-between', 
       alignItems: 'center',
-      marginBottom: '24px'
+      marginBottom: '24px',
+      border: isDarkMode ? '1px solid #424242' : 'none'
     }}>
       <div>
-        <h1 style={{ margin: 0, color: '#1976d2' }}>🔐 RBAC Configuration</h1>
-        <p style={{ margin: 0, color: '#666' }}>Manage role-based access control for your Home Assistant instance</p>
+        <h1 style={{ margin: 0, color: isDarkMode ? '#ffffff' : '#1976d2' }}>🔐 RBAC Configuration</h1>
+        <p style={{ margin: 0, color: isDarkMode ? '#d9d9d9' : '#666' }}>Manage role-based access control for your Home Assistant instance</p>
       </div>
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Theme Toggle Button */}
+        <Tooltip title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
+          <Button
+            type="text"
+            icon={isDarkMode ? <SunOutlined className={isAnimating ? 'theme-toggle-spin' : ''} /> : <MoonOutlined className={isAnimating ? 'theme-toggle-spin' : ''} />}
+            onClick={handleThemeToggle}
+            style={{
+              fontSize: '16px',
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '8px',
+              border: '1px solid #d9d9d9',
+              backgroundColor: 'transparent',
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f5f5f5';
+              e.currentTarget.style.borderColor = '#1890ff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.borderColor = '#d9d9d9';
+            }}
+          />
+        </Tooltip>
+
         {currentUser && (
           <Dropdown
             menu={{ items: userMenuItems }}

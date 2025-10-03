@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
-import { ConfigProvider, Layout, notification, Collapse, Alert, Button, Card, Switch, Tooltip, Typography } from 'antd';
+import { ConfigProvider, Layout, notification, Collapse, Alert, Button, Card, Switch, Tooltip, Typography, theme } from 'antd';
 import { Header } from './Header';
 import { DefaultRestrictions } from './DefaultRestrictions';
 import { RolesManagement } from './RolesManagement';
@@ -7,6 +7,7 @@ import { UserAssignments } from './UserAssignments';
 import { DenyLogModal } from './DenyLogModal';
 import { Loading } from './Loading';
 import { ExclamationCircleOutlined, SettingOutlined, ReloadOutlined } from '@ant-design/icons';
+import { initializeTheme, applyTheme, saveTheme } from '../utils/theme';
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -20,6 +21,7 @@ export function App() {
   const [logDenyList, setLogDenyList] = useState(false);
   const [allowChainedActions, setAllowChainedActions] = useState(false);
   const [denyLogModalVisible, setDenyLogModalVisible] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sensors, setSensors] = useState({
@@ -43,7 +45,8 @@ export function App() {
   });
 
   // Ant Design theme configuration
-  const theme = {
+  const antdTheme = {
+    algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: {
       colorPrimary: '#1890ff',
       borderRadius: 6,
@@ -53,7 +56,24 @@ export function App() {
   useEffect(() => {
     loadData();
     loadCollapsedState();
+    loadTheme();
   }, []);
+
+  const loadTheme = () => {
+    try {
+      const themeMode = initializeTheme();
+      setIsDarkMode(themeMode);
+    } catch (error) {
+      console.warn('Could not load theme:', error);
+    }
+  };
+
+  const handleThemeToggle = () => {
+    const newTheme = !isDarkMode;
+    setIsDarkMode(newTheme);
+    applyTheme(newTheme);
+    saveTheme(newTheme);
+  };
 
   const loadCollapsedState = () => {
     try {
@@ -441,8 +461,8 @@ export function App() {
   // Show authentication required banner if not logged in
   if (!isAuthenticated) {
     return (
-      <ConfigProvider theme={theme}>
-        <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+      <ConfigProvider theme={antdTheme}>
+        <Layout style={{ minHeight: '100vh', background: isDarkMode ? '#141414' : '#f0f2f5' }}>
           <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
             <Header currentUser={currentUser} />
             
@@ -490,8 +510,8 @@ export function App() {
   // Show integration configuration error if not configured
   if (!integrationConfigured) {
     return (
-      <ConfigProvider theme={theme}>
-        <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+      <ConfigProvider theme={antdTheme}>
+        <Layout style={{ minHeight: '100vh', background: isDarkMode ? '#141414' : '#f0f2f5' }}>
           <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
             <Header currentUser={currentUser} />
             
@@ -544,8 +564,8 @@ export function App() {
     const isAdminError = apiError === 'Admin access required';
     
     return (
-      <ConfigProvider theme={theme}>
-        <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+      <ConfigProvider theme={antdTheme}>
+        <Layout style={{ minHeight: '100vh', background: isDarkMode ? '#141414' : '#f0f2f5' }}>
           <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
             <Header currentUser={currentUser} />
             
@@ -602,15 +622,173 @@ export function App() {
   }
 
   return (
-    <ConfigProvider theme={theme}>
+    <ConfigProvider theme={antdTheme}>
       <style>
         {`
+          /* Dark theme background styles */
+          html.dark-theme {
+            background: #141414 !important;
+          }
+          
+          html.dark-theme body {
+            background: #141414 !important;
+            color: #ffffff !important;
+          }
+          
+          html.dark-theme .ant-layout {
+            background: #141414 !important;
+          }
+          
+          html.dark-theme .ant-layout-content {
+            background: #141414 !important;
+          }
+          
+          /* Custom elements dark theme */
+          html.dark-theme .rbac-sensor-card {
+            background: #262626 !important;
+            color: #ffffff !important;
+          }
+          
+          html.dark-theme .rbac-sensor-card:hover {
+            background: linear-gradient(135deg, #303030 0%, #262626 100%) !important;
+            border: 2px solid transparent !important;
+            background-clip: padding-box !important;
+            box-shadow: 0 0 20px rgba(24, 144, 255, 0.3) !important;
+            transform: translateY(-2px) !important;
+          }
+          
+          /* Textarea and template editor dark theme */
+          html.dark-theme .ant-input[type="textarea"] {
+            background: #262626 !important;
+            color: #ffffff !important;
+            border-color: #434343 !important;
+          }
+          
+          html.dark-theme .ant-input[type="textarea"]:focus {
+            background: #262626 !important;
+            color: #ffffff !important;
+            border-color: #1890ff !important;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+          }
+          
+          html.dark-theme .ant-input[type="textarea"]::placeholder {
+            color: #8c8c8c !important;
+          }
+          
+          html.dark-theme textarea.ant-input {
+            background: #262626 !important;
+            color: #ffffff !important;
+            border-color: #434343 !important;
+          }
+          
+          html.dark-theme textarea.ant-input:focus {
+            background: #262626 !important;
+            color: #ffffff !important;
+            border-color: #1890ff !important;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+          }
+          
+          html.dark-theme textarea.ant-input::placeholder {
+            color: #8c8c8c !important;
+          }
+          
+          /* CodeMirror template editor dark theme */
+          html.dark-theme .cm-editor {
+            background: #262626 !important;
+            color: #ffffff !important;
+          }
+          
+          html.dark-theme .cm-scroller {
+            background: #262626 !important;
+            color: #ffffff !important;
+          }
+          
+          html.dark-theme .cm-content {
+            background: #262626 !important;
+            color: #ffffff !important;
+          }
+          
+          html.dark-theme .cm-focused {
+            background: #262626 !important;
+          }
+          
+          html.dark-theme .cm-editor .cm-line {
+            color: #ffffff !important;
+          }
+          
+          html.dark-theme .cm-editor .cm-cursor {
+            border-left-color: #ffffff !important;
+          }
+          
+          html.dark-theme .cm-editor .cm-selectionBackground {
+            background: #434343 !important;
+          }
+          
+          html.dark-theme .cm-gutters {
+            background: #1f1f1f !important;
+            border-right: 1px solid #434343 !important;
+          }
+          
+          html.dark-theme .cm-lineNumbers .cm-gutterElement {
+            color: #8c8c8c !important;
+          }
+          
+          /* Theme toggle button hover styles */
+          html.dark-theme .ant-btn-icon-only:hover .anticon-sun {
+            color: #000000 !important;
+          }
+          
+          /* Theme toggle icon animation */
+          @keyframes themeToggleSpin {
+            0% {
+              transform: rotate(0deg);
+            }
+            100% {
+              transform: rotate(360deg);
+            }
+          }
+          
+          .theme-toggle-spin {
+            animation: themeToggleSpin 1s ease-out;
+          }
+          
           .ant-collapse-header {
             position: sticky !important;
             top: 0 !important;
             z-index: 100 !important;
-            background: white !important;
-            border-bottom: 1px solid #f0f0f0 !important;
+          }
+          
+          /* Sticky header background for dark theme */
+          html.dark-theme .ant-collapse-header {
+            background: #262626 !important;
+            border-bottom: 1px solid #434343 !important;
+          }
+          
+          html.dark-theme .ant-collapse-header:hover {
+            background: #303030 !important;
+          }
+          
+          .rbac-sensor-card:hover {
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8f4fd 100%) !important;
+            border: 2px solid transparent !important;
+            background-clip: padding-box !important;
+            box-shadow: 0 0 20px rgba(24, 144, 255, 0.3) !important;
+            transform: translateY(-2px) !important;
+          }
+          
+          .rbac-sensor-card:hover::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 8px;
+            padding: 2px;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask-composite: exclude;
+            z-index: -1;
           }
           
           @keyframes bannerSlideIn {
@@ -634,7 +812,11 @@ export function App() {
       </style>
       <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
         <Layout.Content style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-          <Header currentUser={currentUser} />
+          <Header 
+            currentUser={currentUser} 
+            isDarkMode={isDarkMode}
+            onThemeToggle={handleThemeToggle}
+          />
           
           {/* RBAC Disabled Warning Banner */}
           {!enabled && (
@@ -834,7 +1016,6 @@ export function App() {
                       alignItems: 'center', 
                       gap: '8px', 
                       padding: '12px', 
-                      background: '#f5f5f5', 
                       borderRadius: '8px',
                       border: '2px solid transparent',
                       cursor: 'pointer',
@@ -858,7 +1039,6 @@ export function App() {
                       alignItems: 'center', 
                       gap: '8px', 
                       padding: '12px', 
-                      background: '#f5f5f5', 
                       borderRadius: '8px',
                       border: '2px solid transparent',
                       cursor: 'pointer',
@@ -882,7 +1062,6 @@ export function App() {
                       alignItems: 'center', 
                       gap: '8px', 
                       padding: '12px', 
-                      background: '#f5f5f5', 
                       borderRadius: '8px',
                       border: '2px solid transparent',
                       cursor: 'pointer',
@@ -901,32 +1080,6 @@ export function App() {
                 </div>
               </Card>
               
-              <style>
-                {`
-                  .rbac-sensor-card:hover {
-                    background: linear-gradient(135deg, #f5f5f5 0%, #e8f4fd 100%) !important;
-                    border: 2px solid transparent !important;
-                    background-clip: padding-box !important;
-                    box-shadow: 0 0 20px rgba(24, 144, 255, 0.3) !important;
-                    transform: translateY(-2px) !important;
-                  }
-                  
-                  .rbac-sensor-card:hover::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    border-radius: 8px;
-                    padding: 2px;
-                    background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
-                    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-                    mask-composite: exclude;
-                    z-index: -1;
-                  }
-                `}
-              </style>
             </Collapse.Panel>
             <Collapse.Panel 
               header="Default Restrictions" 
@@ -960,6 +1113,7 @@ export function App() {
                 onSuccess={showSuccess}
                 onError={showError}
                 onDataChange={setData}
+                isDarkMode={isDarkMode}
               />
             </Collapse.Panel>
           </Collapse>

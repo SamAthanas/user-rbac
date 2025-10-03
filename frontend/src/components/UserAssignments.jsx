@@ -14,7 +14,7 @@ import {
 import { EditOutlined } from '@ant-design/icons';
 import { RoleEditModal } from './RoleEditModal';
 
-export function UserAssignments({ data, onSuccess, onError, onDataChange }) {
+export function UserAssignments({ data, onSuccess, onError, onDataChange, isDarkMode = false }) {
   const [loading, setLoading] = useState(false);
   const [userRoles, setUserRoles] = useState({});
   const [editingRole, setEditingRole] = useState(null);
@@ -43,9 +43,11 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange }) {
   const getAdminGlowStyles = (isAdmin) => {
     if (!isAdmin) return {};
     
+    const backgroundColor = isDarkMode ? '#262626' : 'white';
+    
     return {
       border: '2px solid transparent',
-      background: 'linear-gradient(white, white) padding-box, linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57) border-box',
+      background: `linear-gradient(${backgroundColor}, ${backgroundColor}) padding-box, linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57) border-box`,
       animation: 'adminGlow 2s ease-in-out infinite alternate',
       boxShadow: '0 0 20px rgba(255, 107, 107, 0.3)'
     };
