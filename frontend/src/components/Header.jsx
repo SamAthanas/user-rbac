@@ -84,11 +84,6 @@ export function Header({ currentUser = null, isDarkMode = false, onThemeToggle }
   const handleThemeToggle = () => {
     setIsAnimating(true);
     onThemeToggle();
-    
-    // Remove animation class after animation completes
-    setTimeout(() => {
-      setIsAnimating(false);
-    }, 1000);
   };
 
   const userMenuItems = [
