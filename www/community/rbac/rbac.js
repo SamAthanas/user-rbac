@@ -4,7 +4,7 @@
 (function() {
     'use strict';
     
-    console.log('🔒 RBAC frontend script loaded (new architecture)');
+    console.log('🔒 RBAC frontend script loaded');
     
     let blockConfig = {
         domains: [],
@@ -404,5 +404,5 @@
         }
     }, 10000);
     
-    console.log('🔒 RBAC frontend script initialized (new architecture)');
+    console.log('🔒 RBAC frontend script initialized');
 })();

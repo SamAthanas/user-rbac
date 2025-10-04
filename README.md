@@ -9,6 +9,61 @@
   There is also a friendly frontend GUI as an alternative to configuring the YAML directly.
 </p>
 
+## 📸 Gallery
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <a href="screenshots/editing-role.png" target="_blank">
+          <img src="screenshots/editing-role.png" alt="Role Editing" width="350"/>
+        </a>
+        <br><strong>Role Editing</strong>
+        <br><em>Detailed role configuration and permission settings</em>
+      </td>
+      <td align="center">
+        <a href="screenshots/editing-guest-role.png" target="_blank">
+          <img src="screenshots/editing-guest-role.png" alt="Guest Role Configuration" width="350"/>
+        </a>
+        <br><strong>Guest Role Configuration</strong>
+        <br><em>Specialized role setup for guest users</em>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <a href="screenshots/role-management.png" target="_blank">
+          <img src="screenshots/role-management.png" alt="Role Management" width="350"/>
+        </a>
+        <br><strong>Role Management</strong>
+        <br><em>Overview of all configured roles and their settings</em>
+      </td>
+      <td align="center">
+        <a href="screenshots/user-role-assignment.png" target="_blank">
+          <img src="screenshots/user-role-assignment.png" alt="User Role Assignment" width="350"/>
+        </a>
+        <br><strong>User Role Assignment</strong>
+        <br><em>Assigning roles to Home Assistant users</em>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <a href="screenshots/settings-and-default-restrictions.png" target="_blank">
+          <img src="screenshots/settings-and-default-restrictions.png" alt="Settings and Default Restrictions" width="350"/>
+        </a>
+        <br><strong>Settings and Default Restrictions</strong>
+        <br><em>System-wide settings and default access controls</em>
+      </td>
+      <td align="center">
+        <a href="screenshots/deny-log.png" target="_blank">
+          <img src="screenshots/deny-log.png" alt="Deny Log" width="350"/>
+        </a>
+        <br><strong>Deny Log</strong>
+        <br><em>Track and monitor denied access attempts</em>
+      </td>
+    </tr>
+  </table>
+</div>
+
 ## ⚠️ Notice:
 This application is under active development and is not stable yet!
 Its ideal for users who want to experiment with basic role based access, and restrict others from being able to call specific actions on your home server. (Perhaps this will finally put an end to people expoiting the search feature or widgets to call actions that are not on your dashboard!) This component has been tested on my own instance quite a bit, but there will likely be some bugs that remain. Feel free to contribute directly or raise an issue if there is something you would like tweaked.
