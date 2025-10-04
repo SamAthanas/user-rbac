@@ -5,9 +5,11 @@ import { DefaultRestrictions } from './DefaultRestrictions';
 import { RolesManagement } from './RolesManagement';
 import { UserAssignments } from './UserAssignments';
 import { DenyLogModal } from './DenyLogModal';
+import { YamlEditorModal } from './YamlEditorModal';
 import { Loading } from './Loading';
 import { ExclamationCircleOutlined, SettingOutlined, ReloadOutlined } from '@ant-design/icons';
 import { initializeTheme, applyTheme, saveTheme } from '../utils/theme';
+import { getHAAuth, makeAuthenticatedRequest } from '../utils/auth';
 
 export function App() {
   const [loading, setLoading] = useState(true);
@@ -21,6 +23,7 @@ export function App() {
   const [logDenyList, setLogDenyList] = useState(false);
   const [allowChainedActions, setAllowChainedActions] = useState(false);
   const [denyLogModalVisible, setDenyLogModalVisible] = useState(false);
+  const [yamlEditorModalVisible, setYamlEditorModalVisible] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -142,21 +145,11 @@ export function App() {
 
       console.log('Making API calls...');
       const [usersRes, domainsRes, entitiesRes, servicesRes, configRes] = await Promise.all([
-        fetch('/api/rbac/users', {
-          headers: { 'Authorization': `Bearer ${auth.access_token}` }
-        }),
-        fetch('/api/rbac/domains', {
-          headers: { 'Authorization': `Bearer ${auth.access_token}` }
-        }),
-        fetch('/api/rbac/entities', {
-          headers: { 'Authorization': `Bearer ${auth.access_token}` }
-        }),
-        fetch('/api/rbac/services', {
-          headers: { 'Authorization': `Bearer ${auth.access_token}` }
-        }),
-        fetch('/api/rbac/config', {
-          headers: { 'Authorization': `Bearer ${auth.access_token}` }
-        })
+        makeAuthenticatedRequest('/api/rbac/users'),
+        makeAuthenticatedRequest('/api/rbac/domains'),
+        makeAuthenticatedRequest('/api/rbac/entities'),
+        makeAuthenticatedRequest('/api/rbac/services'),
+        makeAuthenticatedRequest('/api/rbac/config')
       ]);
 
       console.log('API responses:', { usersRes, domainsRes, entitiesRes, servicesRes, configRes });
@@ -266,17 +259,8 @@ export function App() {
 
   const handleEnabledToggle = async (checked) => {
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           action: 'update_settings',
           enabled: checked
@@ -307,17 +291,8 @@ export function App() {
 
   const handleSettingsUpdate = async (settings) => {
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           action: 'update_settings',
           ...settings  // Spread settings at root level
@@ -362,45 +337,9 @@ export function App() {
     }
   };
 
-  const getHAAuth = async () => {
-    try {
-      // Try to get from localStorage (if available)
-      const auth = localStorage.getItem('hassTokens');
-      if (auth) {
-        const tokens = JSON.parse(auth);
-        return {
-          access_token: tokens.access_token,
-          token_type: 'Bearer'
-        };
-      }
-      
-      // Try to get from sessionStorage
-      const sessionAuth = sessionStorage.getItem('hassTokens');
-      if (sessionAuth) {
-        const tokens = JSON.parse(sessionAuth);
-        return {
-          access_token: tokens.access_token,
-          token_type: 'Bearer'
-        };
-      }
-      
-      // Fallback: try to get auth from the current page context
-      const response = await fetch('/auth/token');
-      if (!response.ok) {
-        throw new Error('Not authenticated');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Auth error:', error);
-      return null;
-    }
-  };
-
   const fetchCurrentUser = async (auth) => {
     try {
-      const response = await fetch('/api/rbac/current-user', {
-        headers: { 'Authorization': `Bearer ${auth.access_token}` }
-      });
+      const response = await makeAuthenticatedRequest('/api/rbac/current-user');
       
       if (response.ok) {
         const userData = await response.json();
@@ -416,9 +355,7 @@ export function App() {
 
   const fetchSensors = async (auth) => {
     try {
-      const response = await fetch('/api/rbac/sensors', {
-        headers: { 'Authorization': `Bearer ${auth.access_token}` }
-      });
+      const response = await makeAuthenticatedRequest('/api/rbac/sensors');
       
       if (response.ok) {
         const sensorsData = await response.json();
@@ -862,19 +799,46 @@ export function App() {
               header={
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                   <span>Settings</span>
-                  <Button
-                    type="primary"
-                    icon={<ReloadOutlined />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleManualReload();
-                    }}
-                    loading={reloading}
-                    size="small"
-                    style={{ marginLeft: '16px' }}
-                  >
-                    Reload
-                  </Button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Tooltip title="Edit the access_control.yaml configuration file directly">
+                      <Button
+                        type="default"
+                        icon={<ExclamationCircleOutlined />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setYamlEditorModalVisible(true);
+                        }}
+                        size="small"
+                        style={{ 
+                          borderColor: '#1890ff',
+                          color: '#1890ff',
+                          backgroundColor: 'transparent'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#1890ff';
+                          e.currentTarget.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = '#1890ff';
+                        }}
+                      >
+                        Edit YAML
+                      </Button>
+                    </Tooltip>
+                    <Button
+                      type="primary"
+                      icon={<ReloadOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleManualReload();
+                      }}
+                      loading={reloading}
+                      size="small"
+                    >
+                      Reload
+                    </Button>
+                  </div>
                 </div>
               }
               key="settings"
@@ -1000,6 +964,7 @@ export function App() {
                       </span>
                     )}
                   </div>
+                  
                 </div>
               </Card>
               
@@ -1124,6 +1089,16 @@ export function App() {
       <DenyLogModal
         visible={denyLogModalVisible}
         onClose={() => setDenyLogModalVisible(false)}
+      />
+      
+      {/* YAML Editor Modal */}
+      <YamlEditorModal
+        visible={yamlEditorModalVisible}
+        onClose={() => setYamlEditorModalVisible(false)}
+        onSuccess={() => {
+          // Reload data after successful YAML update
+          handleManualReload();
+        }}
       />
     </ConfigProvider>
   );
