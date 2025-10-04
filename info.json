@@ -1,0 +1,7 @@
+{
+  "name": "RBAC Middleware",
+  "render_readme": true,
+  "filename": "rbac",
+  "country": ["US", "CA", "GB", "AU", "DE", "FR", "IT", "ES", "NL", "BE", "CH", "AT", "SE", "NO", "DK", "FI", "PL", "CZ", "HU", "RO", "BG", "HR", "SI", "SK", "LT", "LV", "EE", "IE", "PT", "GR", "CY", "MT", "LU", "IS", "LI", "MC", "SM", "VA", "AD"],
+  "homeassistant": "2023.1.0"
+}
