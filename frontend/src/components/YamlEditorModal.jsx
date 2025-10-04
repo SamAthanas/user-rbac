@@ -2,6 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { Modal, Button, Space, Typography, notification } from 'antd';
 import { SaveOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import CodeMirror from '@uiw/react-codemirror';
+import { yaml } from '@codemirror/lang-yaml';
 import { getHAAuth, makeAuthenticatedRequest } from '../utils/auth';
 
 const { Text } = Typography;
@@ -133,11 +134,12 @@ export function YamlEditorModal({ visible, onClose, onSuccess }) {
       <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
         <CodeMirror
           value={yamlContent}
-          height="500px"
+          height="calc(100vh - 300px)"
           onChange={(value) => {
             setYamlContent(value);
           }}
           editable={!loading}
+          extensions={[yaml()]}
           basicSetup={{
             lineNumbers: true,
             foldGutter: true,
