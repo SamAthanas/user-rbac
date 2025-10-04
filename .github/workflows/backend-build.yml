@@ -1,0 +1,114 @@
+name: Backend Build Check
+
+on:
+  pull_request:
+    paths:
+      - 'custom_components/**'
+      - '.github/workflows/backend-build.yml'
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'custom_components/**'
+      - '.github/workflows/backend-build.yml'
+
+jobs:
+  backend-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install PyYAML
+        pip install homeassistant
+        pip install pytest
+        pip install pytest-cov
+        pip install flake8
+        pip install black
+        
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 custom_components/rbac --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 custom_components/rbac --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Check code formatting with black
+      run: |
+        black --check custom_components/rbac
+        
+    - name: Validate manifest.json
+      run: |
+        python -c "
+        import json
+        import sys
+        
+        try:
+            with open('custom_components/rbac/manifest.json', 'r') as f:
+                manifest = json.load(f)
+            
+            required_fields = ['domain', 'name', 'version', 'requirements']
+            for field in required_fields:
+                if field not in manifest:
+                    print(f'❌ Missing required field: {field}')
+                    sys.exit(1)
+                    
+            print('✅ Manifest.json is valid')
+            
+        except json.JSONDecodeError as e:
+            print(f'❌ Invalid JSON in manifest.json: {e}')
+            sys.exit(1)
+        except Exception as e:
+            print(f'❌ Error validating manifest.json: {e}')
+            sys.exit(1)
+        "
+        
+    - name: Validate Python syntax
+      run: |
+        python -m py_compile custom_components/rbac/__init__.py
+        python -m py_compile custom_components/rbac/config_flow.py
+        python -m py_compile custom_components/rbac/const.py
+        python -m py_compile custom_components/rbac/sensor.py
+        python -m py_compile custom_components/rbac/services.py
+        echo "✅ All Python files compile successfully"
+        
+    - name: Run basic import tests
+      run: |
+        python -c "
+        import sys
+        sys.path.insert(0, 'custom_components')
+        
+        try:
+            import rbac
+            print('✅ RBAC module imports successfully')
+        except ImportError as e:
+            print(f'❌ Failed to import RBAC module: {e}')
+            sys.exit(1)
+        "
+        
+    - name: Check for common Home Assistant integration issues
+      run: |
+        # Check if all required files exist
+        required_files=(
+          'custom_components/rbac/__init__.py'
+          'custom_components/rbac/manifest.json'
+          'custom_components/rbac/config_flow.py'
+          'custom_components/rbac/const.py'
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ Required file missing: $file"
+            exit 1
+          fi
+        done
+        
+        echo "✅ All required Home Assistant integration files present"
