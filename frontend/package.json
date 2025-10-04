@@ -2,6 +2,7 @@
   "name": "rbac-frontend",
   "version": "1.0.0",
   "description": "RBAC Configuration Frontend",
+  "type": "module",
   "main": "src/index.js",
   "scripts": {
     "dev": "vite",
