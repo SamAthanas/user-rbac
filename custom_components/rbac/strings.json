@@ -1,0 +1,24 @@
+{
+  "services": {
+    "get_user_config": {
+      "name": "Get User Configuration",
+      "description": "Get the access control configuration for a specific user"
+    },
+    "reload_config": {
+      "name": "Reload Configuration", 
+      "description": "Reload the access control configuration from file (admin only)"
+    },
+    "list_users": {
+      "name": "List Users",
+      "description": "List all users configured in the access control system"
+    },
+    "add_user": {
+      "name": "Add User",
+      "description": "Add a user to the access control system with a specific role (admin only)"
+    },
+    "get_available_roles": {
+      "name": "Get Available Roles",
+      "description": "Get all available roles from access control configuration (admin only)"
+    }
+  }
+}

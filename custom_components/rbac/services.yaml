@@ -2,285 +2,46 @@ get_user_config:
   name: Get user configuration
   description: Get the access control configuration for a specific user
   fields:
-    user_id:
-      name: User ID
-      description: The user ID to get the configuration for
+    person:
+      name: Person
+      description: The person entity to get configuration for
       required: true
+      example: "person.john_doe"
       selector:
-        text:
+        entity:
+          domain: person
 
 reload_config:
   name: Reload configuration
-  description: Reload the access control configuration from the YAML file
+  description: Reload the access control configuration from file (admin only)
   fields: {}
 
 list_users:
   name: List users
-  description: List all configured users and their roles
+  description: List all users configured in the access control system
   fields: {}
 
 add_user:
   name: Add user
-  description: Add a user to the access control configuration (admin only)
+  description: Add a user to the access control system with a specific role (admin only)
   fields:
     person:
       name: Person
-      description: Select a person to add to RBAC
+      description: The person entity to add to access control
       required: true
+      example: "person.john_doe"
       selector:
-        person: {}
+        entity:
+          domain: person
     role:
       name: Role
       description: The role to assign to the user
       required: true
-      selector:
-        select:
-          options:
-            - guest
-            - user
-            - admin
-            - super_admin
-
-remove_user:
-  name: Remove user
-  description: Remove a user from the access control configuration (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to remove from RBAC
-      required: true
-      selector:
-        person: {}
-
-update_user_role:
-  name: Update user role
-  description: Update a user's role in the access control configuration (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to update their role
-      required: true
-      selector:
-        person: {}
-    role:
-      name: Role
-      description: The new role to assign to the user
-      required: true
-      selector:
-        select:
-          options:
-            - guest
-            - user
-            - admin
-            - super_admin
-
-add_user_restriction:
-  name: Add user restriction
-  description: Add domain restrictions for a user (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to add restrictions for
-      required: true
-      selector:
-        person: {}
-    domain:
-      name: Domain
-      description: The service domain to restrict (e.g., light, switch, homeassistant)
-      required: true
-      selector:
-        select:
-          options:
-            - light
-            - switch
-            - homeassistant
-            - climate
-            - media_player
-            - cover
-            - fan
-            - lock
-            - vacuum
-            - camera
-            - notify
-            - automation
-            - script
-            - scene
-          custom_value: true
-    services:
-      name: Services
-      description: Comma-separated list of services to restrict (e.g., turn_on,turn_off,toggle)
-      required: true
-      example: "turn_on,turn_off,toggle"
+      example: "admin"
       selector:
         text:
-          multiline: true
 
-remove_user_restriction:
-  name: Remove user restriction
-  description: Remove domain restrictions for a user (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to remove restrictions for
-      required: true
-      selector:
-        person: {}
-    domain:
-      name: Domain
-      description: The service domain to remove restrictions from
-      required: true
-      selector:
-        select:
-          options:
-            - light
-            - switch
-            - homeassistant
-            - climate
-            - media_player
-            - cover
-            - fan
-            - lock
-            - vacuum
-            - camera
-            - notify
-            - automation
-            - script
-            - scene
-          custom_value: true
-
-get_user_device_info:
-  name: Get user device info
-  description: Get device information for a specific user (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to get device info for
-      required: true
-      selector:
-        person: {}
-
-update_user_domain_restrictions:
-  name: Update user domain restrictions
-  description: Update domain restrictions for a user (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to update restrictions for
-      required: true
-      selector:
-        person: {}
-    domains:
-      name: Restricted Domains
-      description: JSON object defining domain restrictions (e.g., {"light":{"services":["turn_on","turn_off"],"allow":false}})
-      required: false
-      example: '{"light":{"services":["turn_on","turn_off"],"allow":false},"switch":{"allow":true}}'
-      selector:
-        text:
-          multiline: true
-
-update_user_entity_restrictions:
-  name: Update user entity restrictions
-  description: Update entity restrictions for a user (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to update restrictions for
-      required: true
-      selector:
-        person: {}
-    entities:
-      name: Restricted Entities
-      description: JSON object defining entity restrictions (e.g., {"light.living_room":{"services":["turn_on"],"allow":false}})
-      required: false
-      example: '{"light.living_room":{"services":["turn_on"],"allow":false},"switch.bedroom":{"allow":true}}'
-      selector:
-        text:
-          multiline: true
-
-update_user_service_restrictions:
-  name: Update user service restrictions
-  description: Update service restrictions for a user (admin only)
-  fields:
-    person:
-      name: Person
-      description: Select a person to update restrictions for
-      required: true
-      selector:
-        person: {}
-    domain:
-      name: Domain
-      description: The domain to update service restrictions for
-      required: true
-      selector:
-        select:
-          options:
-            - light
-            - switch
-            - homeassistant
-            - climate
-            - media_player
-            - cover
-            - fan
-            - lock
-            - vacuum
-            - camera
-            - notify
-            - automation
-            - script
-            - scene
-          custom_value: true
-    services:
-      name: Restricted Services
-      description: JSON object defining service restrictions (e.g., {"turn_on":{"allow":true},"turn_off":{"allow":false}})
-      required: false
-      example: '{"turn_on":{"allow":true},"turn_off":{"allow":false},"toggle":{"allow":false}}'
-      selector:
-        text:
-          multiline: true
-
-get_available_domains:
-  name: Get available domains
-  description: Get all available domains in Home Assistant (admin only)
+get_available_roles:
+  name: Get available roles
+  description: Get all available roles from access control configuration (admin only)
   fields: {}
-
-get_available_entities:
-  name: Get available entities
-  description: Get all available entities in Home Assistant (admin only)
-  fields: {}
-
-get_available_services:
-  name: Get available services
-  description: Get all available services for a specific domain (admin only)
-  fields:
-    domain:
-      name: Domain
-      description: The domain to get services for
-      required: true
-      selector:
-        select:
-          options:
-            - light
-            - switch
-            - homeassistant
-            - climate
-            - media_player
-            - cover
-            - fan
-            - lock
-            - vacuum
-            - camera
-            - notify
-            - automation
-            - script
-            - scene
-            - input_boolean
-            - input_number
-            - input_select
-            - input_text
-            - group
-            - person
-            - zone
-            - sun
-            - weather
-            - calendar
-          custom_value: true

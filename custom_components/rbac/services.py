@@ -6,8 +6,10 @@ from typing import Any, Dict
 import voluptuous as vol
 import yaml
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util.json import JsonObjectType
 
 from . import (
     DOMAIN, 
@@ -18,16 +20,34 @@ from . import (
     add_user_access,
     remove_user_access,
     update_user_role,
-    add_user_restriction,
     remove_user_restriction,
     _save_access_control_config
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+def _get_available_roles(hass: HomeAssistant) -> list:
+    """Get available roles from access control configuration."""
+    if DOMAIN not in hass.data:
+        return ["guest", "user", "admin", "super_admin"]  # Default roles
+    
+    access_config = hass.data[DOMAIN].get("access_config", {})
+    roles = list(access_config.get("roles", {}).keys())
+    
+    # If no roles defined, use default roles
+    if not roles:
+        roles = ["guest", "user", "admin", "super_admin"]
+    
+    return roles
+
+def _validate_role(hass: HomeAssistant, role: str) -> bool:
+    """Validate if a role is available in the access control configuration."""
+    available_roles = _get_available_roles(hass)
+    return role in available_roles
+
 # Service schemas
 GET_USER_CONFIG_SCHEMA = vol.Schema({
-    vol.Required("user_id"): cv.string,
+    vol.Required("person"): cv.string,
 })
 
 RELOAD_CONFIG_SCHEMA = vol.Schema({})
@@ -37,94 +57,86 @@ LIST_USERS_SCHEMA = vol.Schema({})
 # User management schemas (restricted to top-level users)
 ADD_USER_SCHEMA = vol.Schema({
     vol.Required("person"): cv.string,
-    vol.Required("role"): vol.In(["guest", "user", "admin", "super_admin"]),
+    vol.Required("role"): cv.string,
 })
 
-REMOVE_USER_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-})
-
-UPDATE_USER_ROLE_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-    vol.Required("role"): vol.In(["guest", "user", "admin", "super_admin"]),
-})
-
-ADD_USER_RESTRICTION_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-    vol.Required("domain"): cv.string,
-    vol.Required("services"): vol.Any(cv.ensure_list, cv.string),
-})
-
-REMOVE_USER_RESTRICTION_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-    vol.Required("domain"): cv.string,
-})
-
-# New service schemas for device management
-UPDATE_USER_DOMAIN_RESTRICTIONS_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-    vol.Optional("domains"): vol.Any(dict, cv.string, None),
-})
-
-UPDATE_USER_ENTITY_RESTRICTIONS_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-    vol.Optional("entities"): vol.Any(dict, cv.string, None),
-})
-
-UPDATE_USER_SERVICE_RESTRICTIONS_SCHEMA = vol.Schema({
-    vol.Required("person"): cv.string,
-    vol.Required("domain"): cv.string,
-    vol.Optional("services"): vol.Any(dict, cv.string, None),
-})
-
-GET_AVAILABLE_DOMAINS_SCHEMA = vol.Schema({})
-
-GET_AVAILABLE_ENTITIES_SCHEMA = vol.Schema({})
-
-GET_AVAILABLE_SERVICES_SCHEMA = vol.Schema({
-    vol.Required("domain"): cv.string,
-})
+GET_AVAILABLE_ROLES_SCHEMA = vol.Schema({})
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up the RBAC services."""
     
-    async def handle_get_user_config(call: ServiceCall) -> None:
+    async def handle_get_user_config(call: ServiceCall) -> ServiceResponse:
         """Handle the get_user_config service call."""
-        user_id = call.data["user_id"]
+        person_entity_id = call.data.get("person", "")
+        
+        # Extract user_id from person entity
+        try:
+            person_state = hass.states.get(person_entity_id)
+            if not person_state:
+                raise HomeAssistantError(f"Person entity {person_entity_id} not found")
+            
+            user_id = person_state.attributes.get("user_id")
+            if not user_id:
+                raise HomeAssistantError(f"No user_id found for person {person_entity_id}")
+        except Exception as e:
+            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
+            raise HomeAssistantError(f"Error extracting user_id from person {person_entity_id}: {e}")
+        
         user_config = get_user_config(hass, user_id)
         
         if user_config:
             _LOGGER.info(f"User '{user_id}' configuration: {user_config}")
-            message = f"User '{user_id}' configuration:\n{yaml.dump(user_config, default_flow_style=False, indent=2)}"
+            response_data: JsonObjectType = {
+                "success": True,
+                "user_id": user_id,
+                "config": user_config,
+                "message": f"User '{user_id}' configuration retrieved successfully"
+            }
         else:
             _LOGGER.info(f"User '{user_id}' not found in configuration (has full access)")
-            message = f"User '{user_id}' not found in configuration (has full access)"
+            response_data: JsonObjectType = {
+                "success": True,
+                "user_id": user_id,
+                "config": None,
+                "message": f"User '{user_id}' not found in configuration (has full access)"
+            }
         
-        # Create notification
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC User Configuration"
-        )
-    
-    async def handle_reload_config(call: ServiceCall) -> None:
+        # Fire event with the data
+        hass.bus.async_fire("rbac_service_response", {
+            "service": "get_user_config",
+            "data": response_data
+        })
+        
+        return response_data
+
+    async def handle_reload_config(call: ServiceCall) -> Dict[str, Any]:
         """Handle the reload_config service call."""
+        # Check if caller has top-level access
+        caller_id = call.context.user_id if call.context else None
+        if not caller_id or not _is_top_level_user(hass, caller_id):
+            _LOGGER.warning(f"Access denied: User {caller_id} attempted to reload config")
+            return {
+                "success": False,
+                "message": "Access denied: Only admin users can reload configuration"
+            }
+        
         success = await reload_access_config(hass)
         
         if success:
             _LOGGER.info("Access control configuration reloaded successfully")
-            message = "Access control configuration reloaded successfully"
+            return {
+                "success": True,
+                "message": "Access control configuration reloaded successfully"
+            }
         else:
             _LOGGER.error("Failed to reload access control configuration")
-            message = "Failed to reload access control configuration"
-        
-        # Create notification
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Configuration Reload"
-        )
-    
-    async def handle_list_users(call: ServiceCall) -> None:
+            return {
+                "success": False,
+                "message": "Failed to reload access control configuration"
+            }
+
+    async def handle_list_users(call: ServiceCall) -> ServiceResponse:
         """Handle the list_users service call."""
         if DOMAIN not in hass.data:
             users = {}
@@ -134,694 +146,140 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         
         _LOGGER.info(f"Configured users: {list(users.keys())}")
         
-        # Create notification
+        # Format user data for return
+        user_list = []
         if users:
-            message = "Configured users:\n"
             for user_id, user_config in users.items():
                 role = user_config.get("role", "unknown")
                 access = user_config.get("access", "allow")
-                message += f"  {user_id}: role={role}, access={access}\n"
-        else:
-            message = "No users configured (all users have full access)"
+                user_list.append({
+                    "user_id": user_id,
+                    "role": role,
+                    "access": access
+                })
         
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Users"
-        )
-    
-    async def handle_add_user(call: ServiceCall) -> None:
+        response_data: JsonObjectType = {
+            "success": True,
+            "users": user_list,
+            "count": len(user_list),
+            "message": f"Found {len(user_list)} configured users" if user_list else "No users configured (all users have full access)"
+        }
+        
+        # Fire event with the data
+        hass.bus.async_fire("rbac_service_response", {
+            "service": "list_users",
+            "data": response_data
+        })
+        
+        return response_data
+
+    async def handle_add_user(call: ServiceCall) -> Dict[str, Any]:
         """Handle the add_user service call."""
-        person_entity_id = call.data["person"]
-        role = call.data["role"]
+        person_entity_id = call.data.get("person", "")
+        role = call.data.get("role", "")
+        
+        # Validate role
+        if not role:
+            raise HomeAssistantError("Role is required")
+        
+        if not _validate_role(hass, role):
+            available_roles = _get_available_roles(hass)
+            raise HomeAssistantError(f"Invalid role '{role}'. Available roles: {', '.join(available_roles)}")
         
         # Extract user_id from person entity
         try:
             person_state = hass.states.get(person_entity_id)
             if not person_state:
                 _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
+                return {
+                    "success": False,
+                    "message": f"Person entity {person_entity_id} not found"
+                }
             
             user_id = person_state.attributes.get("user_id")
             if not user_id:
                 _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
+                return {
+                    "success": False,
+                    "message": f"No user_id found for person {person_entity_id}"
+                }
         except Exception as e:
             _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
+            return {
+                "success": False,
+                "message": f"Error extracting user_id from person {person_entity_id}: {e}"
+            }
         
         # Check if caller has top-level access
         caller_id = call.context.user_id if call.context else None
         if not caller_id or not _is_top_level_user(hass, caller_id):
             _LOGGER.warning(f"Access denied: User {caller_id} attempted to add user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can add users",
-                title="RBAC Access Denied"
-            )
-            return
+            return {
+                "success": False,
+                "message": "Access denied: Only admin users can add users"
+            }
+        
+        # Check if user is a built-in HA user
+        if _is_builtin_ha_user(user_id):
+            _LOGGER.warning(f"Cannot add built-in Home Assistant user: {user_id}")
+            return {
+                "success": False,
+                "message": f"Cannot add built-in Home Assistant user: {user_id}"
+            }
         
         success = await add_user_access(hass, user_id, role)
         
         if success:
             _LOGGER.info(f"Added user '{user_id}' with role '{role}'")
-            message = f"Successfully added user '{user_id}' with role '{role}'"
+            return {
+                "success": True,
+                "user_id": user_id,
+                "role": role,
+                "message": f"Successfully added user '{user_id}' with role '{role}'"
+            }
         else:
             _LOGGER.error(f"Failed to add user '{user_id}'")
-            message = f"Failed to add user '{user_id}'"
+            return {
+                "success": False,
+                "message": f"Failed to add user '{user_id}'"
+            }
+
+    async def handle_get_available_roles(call: ServiceCall) -> ServiceResponse:
+        """Handle the get_available_roles service call."""
+        # Check if caller has top-level access
+        caller_id = call.context.user_id if call.context else None
+        if not caller_id or not _is_top_level_user(hass, caller_id):
+            _LOGGER.warning(f"Access denied: User {caller_id} attempted to get available roles")
+            raise HomeAssistantError("Access denied: Only top-level users can get available roles")
         
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC User Management"
-        )
-    
-    async def handle_remove_user(call: ServiceCall) -> None:
-        """Handle the remove_user service call."""
-        person_entity_id = call.data["person"]
-        
-        # Extract user_id from person entity
         try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
+            # Get roles from access_config
+            roles = _get_available_roles(hass)
             
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
-        except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to remove user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can remove users",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        success = await remove_user_access(hass, user_id)
-        
-        if success:
-            _LOGGER.info(f"Removed user '{user_id}' from access control")
-            message = f"Successfully removed user '{user_id}' from access control"
-        else:
-            _LOGGER.error(f"Failed to remove user '{user_id}' or user not found")
-            message = f"Failed to remove user '{user_id}' or user not found"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC User Management"
-        )
-    
-    async def handle_update_user_role(call: ServiceCall) -> None:
-        """Handle the update_user_role service call."""
-        person_entity_id = call.data["person"]
-        role = call.data["role"]
-        
-        # Extract user_id from person entity
-        try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
+            _LOGGER.info(f"Available roles: {roles}")
             
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
-        except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to update user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can update user roles",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        success = await update_user_role(hass, user_id, role)
-        
-        if success:
-            _LOGGER.info(f"Updated user '{user_id}' role to '{role}'")
-            message = f"Successfully updated user '{user_id}' role to '{role}'"
-        else:
-            _LOGGER.error(f"Failed to update user '{user_id}' role or user not found")
-            message = f"Failed to update user '{user_id}' role or user not found"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC User Management"
-        )
-    
-    async def handle_add_user_restriction(call: ServiceCall) -> None:
-        """Handle the add_user_restriction service call."""
-        person_entity_id = call.data["person"]
-        domain = call.data["domain"]
-        services = call.data["services"]
-        
-        # Extract user_id from person entity
-        try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
+            response_data: JsonObjectType = {
+                "success": True,
+                "roles": roles,
+                "count": len(roles),
+                "message": f"Found {len(roles)} available roles"
+            }
             
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
-        except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Convert services input to list
-        if isinstance(services, str):
-            # Handle comma-separated string input from UI
-            services = [s.strip() for s in services.split(',') if s.strip()]
-        elif not isinstance(services, list):
-            # Convert other types to list
-            services = [services] if services else []
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to add restriction for user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can add user restrictions",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        success = await add_user_restriction(hass, user_id, domain, services)
-        
-        if success:
-            _LOGGER.info(f"Added restriction for user '{user_id}': {domain}.{services}")
-            message = f"Successfully added restriction for user '{user_id}': {domain}.{services}"
-        else:
-            _LOGGER.error(f"Failed to add restriction for user '{user_id}' or user not found")
-            message = f"Failed to add restriction for user '{user_id}' or user not found"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC User Management"
-        )
-    
-    async def handle_remove_user_restriction(call: ServiceCall) -> None:
-        """Handle the remove_user_restriction service call."""
-        person_entity_id = call.data["person"]
-        domain = call.data["domain"]
-        
-        # Extract user_id from person entity
-        try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
+            # Fire event with the data
+            hass.bus.async_fire("rbac_service_response", {
+                "service": "get_available_roles",
+                "data": response_data
+            })
             
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
-        except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to remove restriction for user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can remove user restrictions",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        success = await remove_user_restriction(hass, user_id, domain)
-        
-        if success:
-            _LOGGER.info(f"Removed restriction for user '{user_id}': {domain}")
-            message = f"Successfully removed restriction for user '{user_id}': {domain}"
-        else:
-            _LOGGER.error(f"Failed to remove restriction for user '{user_id}' or restriction not found")
-            message = f"Failed to remove restriction for user '{user_id}' or restriction not found"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC User Management"
-        )
-    
-    async def handle_update_user_domain_restrictions(call: ServiceCall) -> None:
-        """Handle the update_user_domain_restrictions service call."""
-        person_entity_id = call.data["person"]
-        domains_input = call.data.get("domains", {})
-        
-        # Parse domains input (could be JSON string or dict)
-        if isinstance(domains_input, str):
-            try:
-                import json
-                domains = json.loads(domains_input) if domains_input.strip() else {}
-            except json.JSONDecodeError as e:
-                _LOGGER.error(f"Invalid JSON in domains field: {e}")
-                await hass.components.persistent_notification.async_create(
-                    f"Invalid JSON in domains field: {e}",
-                    title="RBAC Error"
-                )
-                return
-        else:
-            domains = domains_input
-        
-        # Extract user_id from person entity
-        try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
+            return response_data
             
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
         except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to update domain restrictions for user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can update domain restrictions",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        # Update access control configuration
-        if DOMAIN not in hass.data:
-            await hass.components.persistent_notification.async_create(
-                "RBAC not initialized",
-                title="RBAC Error"
-            )
-            return
-        
-        access_config = hass.data[DOMAIN]["access_config"]
-        users = access_config.get("users", {})
-        
-        if user_id not in users:
-            await hass.components.persistent_notification.async_create(
-                f"User '{user_id}' not found in configuration",
-                title="RBAC Error"
-            )
-            return
-        
-        user_config = users[user_id]
-        if "restrictions" not in user_config:
-            user_config["restrictions"] = {}
-        
-        user_config["restrictions"]["domains"] = domains
-        
-        # Save configuration
-        success = await _save_access_control_config(hass, access_config)
-        
-        if success:
-            hass.data[DOMAIN]["access_config"] = access_config
-            _LOGGER.info(f"Updated domain restrictions for user '{user_id}': {domains}")
-            message = f"Successfully updated domain restrictions for user '{user_id}'"
-        else:
-            _LOGGER.error(f"Failed to update domain restrictions for user '{user_id}'")
-            message = f"Failed to update domain restrictions for user '{user_id}'"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Domain Restrictions"
-        )
-    
-    async def handle_update_user_entity_restrictions(call: ServiceCall) -> None:
-        """Handle the update_user_entity_restrictions service call."""
-        person_entity_id = call.data["person"]
-        entities_input = call.data.get("entities", {})
-        
-        # Parse entities input (could be JSON string or dict)
-        if isinstance(entities_input, str):
-            try:
-                import json
-                entities = json.loads(entities_input) if entities_input.strip() else {}
-            except json.JSONDecodeError as e:
-                _LOGGER.error(f"Invalid JSON in entities field: {e}")
-                await hass.components.persistent_notification.async_create(
-                    f"Invalid JSON in entities field: {e}",
-                    title="RBAC Error"
-                )
-                return
-        else:
-            entities = entities_input
-        
-        # Extract user_id from person entity
-        try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
-            
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
-        except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to update entity restrictions for user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can update entity restrictions",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        # Update access control configuration
-        if DOMAIN not in hass.data:
-            await hass.components.persistent_notification.async_create(
-                "RBAC not initialized",
-                title="RBAC Error"
-            )
-            return
-        
-        access_config = hass.data[DOMAIN]["access_config"]
-        users = access_config.get("users", {})
-        
-        if user_id not in users:
-            await hass.components.persistent_notification.async_create(
-                f"User '{user_id}' not found in configuration",
-                title="RBAC Error"
-            )
-            return
-        
-        user_config = users[user_id]
-        if "restrictions" not in user_config:
-            user_config["restrictions"] = {}
-        
-        user_config["restrictions"]["entities"] = entities
-        
-        # Save configuration
-        success = await _save_access_control_config(hass, access_config)
-        
-        if success:
-            hass.data[DOMAIN]["access_config"] = access_config
-            _LOGGER.info(f"Updated entity restrictions for user '{user_id}': {entities}")
-            message = f"Successfully updated entity restrictions for user '{user_id}'"
-        else:
-            _LOGGER.error(f"Failed to update entity restrictions for user '{user_id}'")
-            message = f"Failed to update entity restrictions for user '{user_id}'"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Entity Restrictions"
-        )
-    
-    async def handle_update_user_service_restrictions(call: ServiceCall) -> None:
-        """Handle the update_user_service_restrictions service call."""
-        person_entity_id = call.data["person"]
-        domain = call.data["domain"]
-        services_input = call.data.get("services", {})
-        
-        # Parse services input (could be JSON string or dict)
-        if isinstance(services_input, str):
-            try:
-                import json
-                services = json.loads(services_input) if services_input.strip() else {}
-            except json.JSONDecodeError as e:
-                _LOGGER.error(f"Invalid JSON in services field: {e}")
-                await hass.components.persistent_notification.async_create(
-                    f"Invalid JSON in services field: {e}",
-                    title="RBAC Error"
-                )
-                return
-        else:
-            services = services_input
-        
-        # Extract user_id from person entity
-        try:
-            person_state = hass.states.get(person_entity_id)
-            if not person_state:
-                _LOGGER.error(f"Person entity {person_entity_id} not found")
-                await hass.components.persistent_notification.async_create(
-                    f"Person entity {person_entity_id} not found",
-                    title="RBAC Error"
-                )
-                return
-            
-            user_id = person_state.attributes.get("user_id")
-            if not user_id:
-                _LOGGER.error(f"No user_id found for person {person_entity_id}")
-                await hass.components.persistent_notification.async_create(
-                    f"No user_id found for person {person_entity_id}",
-                    title="RBAC Error"
-                )
-                return
-        except Exception as e:
-            _LOGGER.error(f"Error extracting user_id from person {person_entity_id}: {e}")
-            await hass.components.persistent_notification.async_create(
-                f"Error extracting user_id from person {person_entity_id}: {e}",
-                title="RBAC Error"
-            )
-            return
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to update service restrictions for user {user_id}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can update service restrictions",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        # Update access control configuration
-        if DOMAIN not in hass.data:
-            await hass.components.persistent_notification.async_create(
-                "RBAC not initialized",
-                title="RBAC Error"
-            )
-            return
-        
-        access_config = hass.data[DOMAIN]["access_config"]
-        users = access_config.get("users", {})
-        
-        if user_id not in users:
-            await hass.components.persistent_notification.async_create(
-                f"User '{user_id}' not found in configuration",
-                title="RBAC Error"
-            )
-            return
-        
-        user_config = users[user_id]
-        if "restrictions" not in user_config:
-            user_config["restrictions"] = {}
-        if "domains" not in user_config["restrictions"]:
-            user_config["restrictions"]["domains"] = {}
-        
-        user_config["restrictions"]["domains"][domain] = services
-        
-        # Save configuration
-        success = await _save_access_control_config(hass, access_config)
-        
-        if success:
-            hass.data[DOMAIN]["access_config"] = access_config
-            _LOGGER.info(f"Updated service restrictions for user '{user_id}' domain '{domain}': {services}")
-            message = f"Successfully updated service restrictions for user '{user_id}' domain '{domain}'"
-        else:
-            _LOGGER.error(f"Failed to update service restrictions for user '{user_id}' domain '{domain}'")
-            message = f"Failed to update service restrictions for user '{user_id}' domain '{domain}'"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Service Restrictions"
-        )
-    
-    async def handle_get_available_domains(call: ServiceCall) -> None:
-        """Handle the get_available_domains service call."""
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to get available domains")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can get available domains",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        # Get all domains from states
-        all_states = hass.states.async_all()
-        domains = set()
-        
-        for state in all_states:
-            domain = state.entity_id.split('.')[0]
-            domains.add(domain)
-        
-        domains_list = sorted(list(domains))
-        
-        _LOGGER.info(f"Available domains: {domains_list}")
-        message = f"Available domains ({len(domains_list)}):\n" + "\n".join(domains_list)
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Available Domains"
-        )
-    
-    async def handle_get_available_entities(call: ServiceCall) -> None:
-        """Handle the get_available_entities service call."""
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to get available entities")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can get available entities",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        # Get all entities from states
-        all_states = hass.states.async_all()
-        entities = [state.entity_id for state in all_states]
-        
-        entities_list = sorted(entities)
-        
-        _LOGGER.info(f"Available entities: {len(entities_list)} total")
-        message = f"Available entities ({len(entities_list)}):\n" + "\n".join(entities_list[:50])  # Limit to first 50
-        if len(entities_list) > 50:
-            message += f"\n... and {len(entities_list) - 50} more"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Available Entities"
-        )
-    
-    async def handle_get_available_services(call: ServiceCall) -> None:
-        """Handle the get_available_services service call."""
-        domain = call.data["domain"]
-        
-        # Check if caller has top-level access
-        caller_id = call.context.user_id if call.context else None
-        if not caller_id or not _is_top_level_user(hass, caller_id):
-            _LOGGER.warning(f"Access denied: User {caller_id} attempted to get available services for domain {domain}")
-            await hass.components.persistent_notification.async_create(
-                f"Access denied: Only admin users can get available services",
-                title="RBAC Access Denied"
-            )
-            return
-        
-        # Get services for the domain
-        try:
-            services = hass.services.services_for_domain(domain)
-            services_list = sorted(list(services.keys()))
-            
-            _LOGGER.info(f"Available services for domain '{domain}': {services_list}")
-            message = f"Available services for domain '{domain}' ({len(services_list)}):\n" + "\n".join(services_list)
-        except Exception as e:
-            _LOGGER.error(f"Error getting services for domain '{domain}': {e}")
-            message = f"Error getting services for domain '{domain}': {e}"
-        
-        await hass.components.persistent_notification.async_create(
-            message,
-            title="RBAC Available Services"
-        )
+            _LOGGER.error(f"Error getting available roles: {e}")
+            raise HomeAssistantError(f"Error getting available roles: {e}")
     
     # Register services
     hass.services.async_register(
-        DOMAIN, "get_user_config", handle_get_user_config, schema=GET_USER_CONFIG_SCHEMA
+        DOMAIN, "get_user_config", handle_get_user_config, schema=GET_USER_CONFIG_SCHEMA, supports_response=SupportsResponse.ONLY
     )
     
     hass.services.async_register(
@@ -829,7 +287,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
     
     hass.services.async_register(
-        DOMAIN, "list_users", handle_list_users, schema=LIST_USERS_SCHEMA
+        DOMAIN, "list_users", handle_list_users, schema=LIST_USERS_SCHEMA, supports_response=SupportsResponse.ONLY
     )
     
     # User management services (restricted to top-level users)
@@ -838,47 +296,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
     
     hass.services.async_register(
-        DOMAIN, "remove_user", handle_remove_user, schema=REMOVE_USER_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "update_user_role", handle_update_user_role, schema=UPDATE_USER_ROLE_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "add_user_restriction", handle_add_user_restriction, schema=ADD_USER_RESTRICTION_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "remove_user_restriction", handle_remove_user_restriction, schema=REMOVE_USER_RESTRICTION_SCHEMA
-    )
-    
-    # New device management services
-    hass.services.async_register(
-        DOMAIN, "update_user_domain_restrictions", handle_update_user_domain_restrictions, schema=UPDATE_USER_DOMAIN_RESTRICTIONS_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "update_user_entity_restrictions", handle_update_user_entity_restrictions, schema=UPDATE_USER_ENTITY_RESTRICTIONS_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "update_user_service_restrictions", handle_update_user_service_restrictions, schema=UPDATE_USER_SERVICE_RESTRICTIONS_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "get_available_domains", handle_get_available_domains, schema=GET_AVAILABLE_DOMAINS_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "get_available_entities", handle_get_available_entities, schema=GET_AVAILABLE_ENTITIES_SCHEMA
-    )
-    
-    hass.services.async_register(
-        DOMAIN, "get_available_services", handle_get_available_services, schema=GET_AVAILABLE_SERVICES_SCHEMA
+        DOMAIN, "get_available_roles", handle_get_available_roles, schema=GET_AVAILABLE_ROLES_SCHEMA, supports_response=SupportsResponse.ONLY
     )
     
     _LOGGER.info("RBAC services registered successfully")
+
 
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
