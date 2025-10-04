@@ -1192,12 +1192,12 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         domain_allowed = user_domain_config.get("allow", False)
                         if domain_allowed:
                             # User explicitly allows this domain
-                        allowed_domains.append(domain)
-                        continue
-                    if not user_services:  # Empty list means block all
-                        domain_blocked = True
-                    else:
-                        domain_services = user_services
+                            allowed_domains.append(domain)
+                            continue
+                        if not user_services:  # Empty list means block all
+                            domain_blocked = True
+                        else:
+                            domain_services = user_services
                     else:
                         domain_blocked = True  # Non-dict means block all
                 
@@ -1209,12 +1209,12 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         domain_allowed = role_domain_config.get("allow", False)
                         if domain_allowed:
                             # Role explicitly allows this domain
-                        allowed_domains.append(domain)
-                        continue
-                    if not role_services:  # Empty list means block all
-                        domain_blocked = True
-                    else:
-                        domain_services = role_services
+                            allowed_domains.append(domain)
+                            continue
+                        if not role_services:  # Empty list means block all
+                            domain_blocked = True
+                        else:
+                            domain_services = role_services
                     else:
                         domain_blocked = True  # Non-dict means block all
                 
@@ -1226,12 +1226,12 @@ class RBACFrontendBlockingView(HomeAssistantView):
                         domain_allowed = default_domain_config.get("allow", False)
                         if domain_allowed:
                             # Default explicitly allows this domain
-                        allowed_domains.append(domain)
-                        continue
-                    if not default_services:  # Empty list means block all
-                        domain_blocked = True
-                    else:
-                        domain_services = default_services
+                            allowed_domains.append(domain)
+                            continue
+                        if not default_services:  # Empty list means block all
+                            domain_blocked = True
+                        else:
+                            domain_services = default_services
                     else:
                         domain_blocked = True  # Non-dict means block all
                 
