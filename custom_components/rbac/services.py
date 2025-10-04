@@ -1867,3 +1867,81 @@ class RBACFrontendBlockingView(HomeAssistantView):
         except Exception as e:
             _LOGGER.error(f"Error getting frontend blocking config: {e}")
             return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACYamlEditorView(HomeAssistantView):
+    """View for YAML editor operations."""
+    
+    url = "/api/rbac/yaml-editor"
+    name = "api:rbac:yaml-editor"
+    requires_auth = True
+    
+    async def get(self, request):
+        """Get the current access_control.yaml content."""
+        try:
+            hass = request.app["hass"]
+            
+            # Load configuration directly from the YAML file
+            from . import _load_access_control_config
+            access_config = await _load_access_control_config(hass)
+            
+            # Convert to YAML string
+            yaml_content = yaml.dump(access_config, default_flow_style=False, indent=2, sort_keys=False)
+            
+            return self.json({"yaml_content": yaml_content})
+            
+        except Exception as e:
+            _LOGGER.error(f"Error getting YAML content: {e}")
+            return self.json({"error": str(e)}, status_code=500)
+    
+    async def post(self, request):
+        """Update the access_control.yaml file with new content."""
+        try:
+            hass = request.app["hass"]
+            data = await request.json()
+            yaml_content = data.get("yaml_content", "")
+            
+            if not yaml_content.strip():
+                return self.json({"error": "YAML content cannot be empty"}, status_code=400)
+            
+            # Validate YAML syntax
+            try:
+                parsed_config = yaml.safe_load(yaml_content)
+            except yaml.YAMLError as e:
+                return self.json({"error": f"Invalid YAML syntax: {str(e)}"}, status_code=400)
+            
+            # Basic validation of the structure
+            if not isinstance(parsed_config, dict):
+                return self.json({"error": "YAML must contain a dictionary/object"}, status_code=400)
+            
+            # Validate required top-level keys
+            required_keys = ["roles", "users"]
+            for key in required_keys:
+                if key not in parsed_config:
+                    return self.json({"error": f"Missing required key: {key}"}, status_code=400)
+            
+            # Validate roles structure
+            if not isinstance(parsed_config["roles"], dict):
+                return self.json({"error": "roles must be a dictionary"}, status_code=400)
+            
+            # Validate users structure
+            if not isinstance(parsed_config["users"], dict):
+                return self.json({"error": "users must be a dictionary"}, status_code=400)
+            
+            # Validate role names (alphanumeric and underscores only)
+            for role_name in parsed_config["roles"].keys():
+                if not isinstance(role_name, str) or not role_name.replace("_", "").replace("-", "").isalnum():
+                    return self.json({"error": f"Invalid role name '{role_name}': must contain only letters, numbers, underscores, and hyphens"}, status_code=400)
+            
+            # Save the configuration
+            from . import _save_access_control_config
+            success = await _save_access_control_config(hass, parsed_config)
+            
+            if success:
+                return self.json({"success": True, "message": "YAML configuration updated successfully"})
+            else:
+                return self.json({"error": "Failed to save YAML configuration"}, status_code=500)
+                
+        except Exception as e:
+            _LOGGER.error(f"Error updating YAML content: {e}")
+            return self.json({"error": str(e)}, status_code=500)

@@ -6,7 +6,7 @@
 
 <p align="center">
   Finally, a flexible Role-Based Access Control (RBAC) middleware component for Home Assistant that intercepts service calls and enforces access control based on YAML configuration.<br>
-  There is also a friendly frontend GUI as an alternative to configuring the YAML directly.
+  Configure roles and user permissions using the fancy GUI editor, or configure in the YAML file directly.
 </p>
 
 ## 📸 Gallery
@@ -26,7 +26,7 @@
           <img src="screenshots/editing-guest-role.png" alt="Guest Role Configuration" width="350"/>
         </a>
         <br><strong>Guest Role Configuration</strong>
-        <br><em>Specialized role setup for guest users</em>
+        <br><em>Guest user role with template condition</em>
       </td>
     </tr>
     <tr>
@@ -104,6 +104,17 @@ Due to the nature of this application patching core functions, its possible that
 - Its possible to assign templates to each role. Templates will be evaluated each time a user that has that role executes a service call. The template will determine if the users role should be used, or if it should fallback to a different role with an entierly different set of permissions. This makes it possible to create more complex auth systems based on current states from your HA instance.
 - Default domain/enttiy blocklists are supported. Any non-admin user will always have these restrictions enforced.
 - Frontend is built using Preact that compiles into a static page, for easier state management and component isolation.
+
+## 💡 Future Ideas
+> **Note:** The following are some future ideas for this project. Not all of these may be possible to implement.
+- Add an option to create a temporary guest page to grant temporary access to specific entities without needing to create a guest account
+  - Add a date range or template to determine if the guest page should be active
+- Lock down the entity list so that the backend can only return the entities that a user has access to, without needing to rely on a frontend filtering script
+- Add a backend option to restrict users from being able to see the current values of entities
+- Add the ability to restrict camera feeds from displaying to users without access
+- Send notifications to users that were blocked from accessing a service
+- Intercept voice commands to return an error message if the user tried to access a blocked service. Right now the returned response always indicates success even if the service call was blocked.
+
 
 ## 🤝 Contributing
 Contributions are welcome and much appreciated!

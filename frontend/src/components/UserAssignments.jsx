@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { RoleEditModal } from './RoleEditModal';
+import { getHAAuth, makeAuthenticatedRequest } from '../utils/auth';
 
 export function UserAssignments({ data, onSuccess, onError, onDataChange, isDarkMode = false }) {
   const [loading, setLoading] = useState(false);
@@ -53,73 +54,11 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
     };
   };
 
-  const getHAAuth = async () => {
-    try {
-      const hass = getHassObject();
-      if (hass && hass.auth) {
-        if (hass.auth.data && hass.auth.data.access_token) {
-          return {
-            access_token: hass.auth.data.access_token,
-            token_type: 'Bearer'
-          };
-        }
-        if (hass.auth.access_token) {
-          return {
-            access_token: hass.auth.access_token,
-            token_type: 'Bearer'
-          };
-        }
-      }
-      
-      const auth = localStorage.getItem('hassTokens') || sessionStorage.getItem('hassTokens');
-      if (auth) {
-        const tokens = JSON.parse(auth);
-        return {
-          access_token: tokens.access_token,
-          token_type: 'Bearer'
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Auth error:', error);
-      return null;
-    }
-  };
-
-  const getHassObject = () => {
-    try {
-      const homeAssistantElement = document.querySelector("home-assistant");
-      if (homeAssistantElement && homeAssistantElement.hass) {
-        return homeAssistantElement.hass;
-      }
-      if (window.hass) {
-        return window.hass;
-      }
-      if (window.parent && window.parent !== window && window.parent.hass) {
-        return window.parent.hass;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting hass object:', error);
-      return null;
-    }
-  };
-
   const handleRoleChange = async (userId, newRole) => {
     setLoading(true);
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           action: 'assign_user_role',
           userId: userId,
