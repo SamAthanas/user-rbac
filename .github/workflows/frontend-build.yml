@@ -1,0 +1,54 @@
+name: Frontend Build Check
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-build.yml'
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-build.yml'
+
+jobs:
+  frontend-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+      
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+      
+    - name: Verify build output
+      run: |
+        if [ ! -f "www/community/rbac/config.html" ]; then
+          echo "❌ Build failed - config.html not found"
+          exit 1
+        fi
+        if [ ! -f "www/community/rbac/config.js" ]; then
+          echo "❌ Build failed - config.js not found"
+          exit 1
+        fi
+        echo "✅ Frontend build successful - all required files generated"
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build
+        path: www/community/rbac/
+        retention-days: 1
