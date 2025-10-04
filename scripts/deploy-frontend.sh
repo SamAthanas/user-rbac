@@ -92,13 +92,7 @@ fi
 echo "📤 Deploying RBAC frontend JavaScript..."
 if eval "$frontend_scp_command"; then
     echo "✅ Frontend deployment successful!"
-    echo ""
-    echo "📋 Next steps:"
-    echo "   1. Reload the frontend (refresh browser or restart Home Assistant)"
-    echo "   2. Navigate to: http://$HA_SERVER_HOST:8123/local/community/rbac/config.html"
-    echo "   3. Check browser console (F12) for any errors"
-    echo ""
-    echo "🔗 Access your Home Assistant at: http://$HA_SERVER_HOST:8123"
+    echo "Please refresh the frontend cache to see the changes."
 else
     echo "❌ Frontend deployment failed!"
     exit 1

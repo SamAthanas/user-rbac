@@ -109,6 +109,12 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
     return roles;
   };
 
+  const isRoleValid = (userId) => {
+    const userRole = userRoles[userId];
+    const availableRoles = getAvailableRoles();
+    return availableRoles.includes(userRole);
+  };
+
   const getUserDisplayName = (user) => {
     return user.name || user.username || user.id;
   };
@@ -152,6 +158,10 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
               box-shadow: 0 0 30px rgba(78, 205, 196, 0.5), 0 0 40px rgba(69, 183, 209, 0.3);
             }
           }
+          
+          .role-selector-container .ant-space-item:last-child {
+            margin-left: auto !important;
+          }
         `}
       </style>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
@@ -169,7 +179,7 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
                   ...getAdminGlowStyles(isUserAdmin(user))
                 }}
               >
-                <Space align="center" style={{ width: '100%', height: '80px' }}>
+                <Space align="center" style={{ width: '100%', height: '80px' }} className="role-selector-container">
                   {/* User Picture */}
                   <Avatar
                     src={getUserPicture(user)}
@@ -189,13 +199,15 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
                   </Space>
                   
                   {/* Role Selector - Right Aligned */}
-                  <div style={{ marginLeft: 'auto' }}>
+                  <div>
                     <Select
-                      value={userRoles[user.id] || 'user'}
+                      value={isRoleValid(user.id) ? (userRoles[user.id] || 'user') : undefined}
                       onChange={(value) => handleRoleChange(user.id, value)}
                       disabled={loading}
                       style={{ minWidth: 120 }}
                       size="small"
+                      status={isRoleValid(user.id) ? '' : 'error'}
+                      placeholder={isRoleValid(user.id) ? undefined : 'Select Role...'}
                     >
                       {getAvailableRoles().map(role => (
                         <Select.Option key={role} value={role}>
