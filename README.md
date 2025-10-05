@@ -128,5 +128,13 @@ There are vscode scripts included to easily deploy changes made to the backend o
 
 Alternatively, you may submit an issue if you encounter a problem or want to request a new feature.
 
+<p>
+  <a href="https://buymeacoffee.com/samathanas" target="_blank">
+    <img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-☕-yellow.svg" alt="Buy me a coffee" />
+  </a>
+  <br>
+  <small><em>If you like my work, consider supporting me using the buy me a coffee link!</em></small>
+</p>
+
 ## 📄 License
 This project is licensed under the MIT License.
