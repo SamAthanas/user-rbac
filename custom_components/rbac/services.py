@@ -547,6 +547,55 @@ class RBACConfigView(HomeAssistantView):
                     access_config["users"][user_id] = {}
                 access_config["users"][user_id]["role"] = role_name
                 
+            elif action == "add_guest_user":
+                guest_name = data.get("guestName")
+                guest_id = data.get("guestId")
+                
+                if not guest_name or not guest_id:
+                    return self.json({"error": "Missing guestName or guestId"}, status_code=400)
+                
+                # Validate guest ID format (GUID)
+                import re
+                if not re.match(r'^[a-f0-9-]{36}$', guest_id):
+                    return self.json({"error": "Guest ID must be a valid GUID format"}, status_code=400)
+                
+                # Add guest user to configuration
+                if "users" not in access_config:
+                    access_config["users"] = {}
+                
+                # Check if guest ID already exists
+                if guest_id in access_config["users"]:
+                    return self.json({"error": "Guest ID already exists"}, status_code=400)
+                
+                # Add guest user with default role
+                access_config["users"][guest_id] = {
+                    "role": "guest",
+                    "name": guest_name,
+                    "is_guest": True
+                }
+                
+                _LOGGER.info(f"Added guest user: {guest_name} with ID: {guest_id}")
+                
+            elif action == "remove_guest_user":
+                guest_id = data.get("guestId")
+                
+                if not guest_id:
+                    return self.json({"error": "Missing guestId"}, status_code=400)
+                
+                # Check if guest user exists
+                if "users" not in access_config or guest_id not in access_config["users"]:
+                    return self.json({"error": "Guest user not found"}, status_code=404)
+                
+                # Check if it's actually a guest user
+                guest_config = access_config["users"][guest_id]
+                if not guest_config.get("is_guest", False):
+                    return self.json({"error": "User is not a guest user"}, status_code=400)
+                
+                # Remove guest user from configuration
+                del access_config["users"][guest_id]
+                
+                _LOGGER.info(f"Removed guest user with ID: {guest_id}")
+                
             elif action == "update_default_restrictions":
                 restrictions = data.get("restrictions")
                 
@@ -615,6 +664,8 @@ class RBACUsersView(HomeAssistantView):
         
         try:
             users = []
+            
+            # Add regular Home Assistant users
             for user_id in hass.auth._store._users:
                 try:
                     user = await hass.auth.async_get_user(user_id)
@@ -652,6 +703,22 @@ class RBACUsersView(HomeAssistantView):
                         
                 except Exception as e:
                     _LOGGER.debug(f"Could not get user {user_id}: {e}")
+            
+            # Add guest users from access control configuration
+            if DOMAIN in hass.data:
+                access_config = hass.data[DOMAIN].get("access_config", {})
+                guest_users = access_config.get("users", {})
+                
+                for guest_id, guest_config in guest_users.items():
+                    if guest_config.get("is_guest", False):
+                        user_data = {
+                            "id": guest_id,
+                            "name": guest_config.get("name", f"Guest {guest_id[:8]}"),
+                            "entity_picture": None,
+                            "person_entity_id": None,
+                            "isGuest": True
+                        }
+                        users.append(user_data)
             
             return self.json(users)
         except Exception as e:

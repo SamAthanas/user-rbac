@@ -9,10 +9,14 @@ import {
   Select,
   Tag,
   Button,
-  Divider
+  Divider,
+  Tooltip,
+  Popconfirm
 } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import { EditOutlined, UserAddOutlined, CloseOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import { RoleEditModal } from './RoleEditModal';
+import { GuestUserModal } from './GuestUserModal';
+import { DashboardLinkModal } from './DashboardLinkModal';
 import { getHAAuth, makeAuthenticatedRequest } from '../utils/auth';
 
 export function UserAssignments({ data, onSuccess, onError, onDataChange, isDarkMode = false }) {
@@ -20,6 +24,9 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
   const [userRoles, setUserRoles] = useState({});
   const [editingRole, setEditingRole] = useState(null);
   const [editingRoleData, setEditingRoleData] = useState(null);
+  const [guestModalVisible, setGuestModalVisible] = useState(false);
+  const [dashboardLinkModalVisible, setDashboardLinkModalVisible] = useState(false);
+  const [selectedGuestUser, setSelectedGuestUser] = useState(null);
 
   // Initialize user roles from config
   useEffect(() => {
@@ -120,6 +127,11 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
   };
 
   const getUserPicture = (user) => {
+    // Guest users don't have entity pictures
+    if (user.isGuest) {
+      return null;
+    }
+    
     // Use the entity_picture from the person entity if available
     if (user.entity_picture) {
       return user.entity_picture;
@@ -133,6 +145,17 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
     return null;
   };
 
+  // Get guest user styles
+  const getGuestStyles = (isGuest) => {
+    if (!isGuest) return {};
+    
+    return {
+      border: '2px dashed #1890ff',
+      backgroundColor: '#f0f8ff',
+      position: 'relative'
+    };
+  };
+
   const handleEditRole = (roleName) => {
     const role = data.config?.roles?.[roleName];
     if (role) {
@@ -144,6 +167,48 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
   const closeRoleModal = () => {
     setEditingRole(null);
     setEditingRoleData(null);
+  };
+
+  const handleRemoveGuestUser = async (guestId, guestName) => {
+    setLoading(true);
+    try {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'remove_guest_user',
+          guestId: guestId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to remove guest user');
+      }
+
+      // Update local data to remove the guest user
+      const updatedUsers = (data.users || []).filter(user => user.id !== guestId);
+
+      onDataChange({
+        ...data,
+        users: updatedUsers
+      });
+
+      onSuccess(`Guest user "${guestName}" removed successfully!`);
+    } catch (error) {
+      console.error('Error removing guest user:', error);
+      onError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenDashboardLink = (guestUser) => {
+    setSelectedGuestUser(guestUser);
+    setDashboardLinkModalVisible(true);
+  };
+
+  const handleCloseDashboardLinkModal = () => {
+    setDashboardLinkModalVisible(false);
+    setSelectedGuestUser(null);
   };
 
   return (
@@ -169,62 +234,183 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
       </Typography.Paragraph>
       
       {data.users && data.users.length > 0 ? (
-        <Row gutter={[16, 16]}>
-          {data.users.map(user => (
-            <Col xs={24} sm={12} key={user.id}>
-              <Card 
-                size="small" 
-                style={{ 
-                  height: '100%',
-                  ...getAdminGlowStyles(isUserAdmin(user))
-                }}
-              >
-                <Space align="center" style={{ width: '100%', height: '80px' }} className="role-selector-container">
-                  {/* User Picture */}
-                  <Avatar
-                    src={getUserPicture(user)}
-                    size={48}
-                  >
-                    {getUserDisplayName(user).charAt(0).toUpperCase()}
-                  </Avatar>
-                  
-                  {/* User Info */}
-                  <Space direction="vertical" style={{ flex: 1 }}>
-                    <Typography.Text strong>
-                      {getUserDisplayName(user)}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
-                      ID: {user.id}
-                    </Typography.Text>
-                  </Space>
-                  
-                  {/* Role Selector - Right Aligned */}
-                  <div>
-                    <Select
-                      value={isRoleValid(user.id) ? (userRoles[user.id] || 'user') : undefined}
-                      onChange={(value) => handleRoleChange(user.id, value)}
-                      disabled={loading}
-                      style={{ minWidth: 120 }}
-                      size="small"
-                      status={isRoleValid(user.id) ? '' : 'error'}
-                      placeholder={isRoleValid(user.id) ? undefined : 'Select Role...'}
+        <>
+          <Row gutter={[16, 16]}>
+            {data.users.map(user => (
+              <Col xs={24} sm={12} key={user.id}>
+                <Card 
+                  size="small" 
+                  style={{ 
+                    height: '100%',
+                    ...getAdminGlowStyles(isUserAdmin(user)),
+                    ...getGuestStyles(user.isGuest)
+                  }}
+                >
+                  {/* Guest Tag - Overlapping bottom of profile picture */}
+                  {user.isGuest && (
+                    <Tooltip title="This is a temporary guest user">
+                      <Tag 
+                        color="blue" 
+                        style={{ 
+                          position: 'absolute', 
+                          top: '64px', 
+                          left: '14px', 
+                          fontSize: '10px',
+                          zIndex: 1
+                        }}
+                      >
+                        Guest
+                      </Tag>
+                    </Tooltip>
+                  )}
+
+                  {/* Remove Guest User Button */}
+                  {user.isGuest && (
+                    <Popconfirm
+                      title="Remove Guest User"
+                      description={`Are you sure you want to remove "${user.name}"?`}
+                      onConfirm={() => handleRemoveGuestUser(user.id, user.name)}
+                      okText="Yes, Remove"
+                      cancelText="Cancel"
+                      okType="danger"
+                      placement="topRight"
                     >
-                      {getAvailableRoles().map(role => (
-                        <Select.Option key={role} value={role}>
-                          {role.charAt(0).toUpperCase() + role.slice(1)}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </div>
-                </Space>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+                      <Button
+                        type="text"
+                        danger
+                        icon={<CloseOutlined />}
+                        size="small"
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          zIndex: 2,
+                          width: '24px',
+                          height: '24px',
+                          padding: '0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                          border: 'none',
+                          borderRadius: '4px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#ff4d4f';
+                          e.currentTarget.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                          e.currentTarget.style.color = '#ff4d4f';
+                        }}
+                      />
+                    </Popconfirm>
+                  )}
+
+                  {/* Dashboard Link Button - Left of X button */}
+                  {user.isGuest && (
+                    <Button
+                      type="text"
+                      icon={<LinkOutlined />}
+                      size="small"
+                      onClick={() => handleOpenDashboardLink(user)}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '40px',
+                        zIndex: 2,
+                        width: '24px',
+                        height: '24px',
+                        padding: '0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                        border: 'none',
+                        borderRadius: '4px',
+                        color: '#1890ff'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#1890ff';
+                        e.currentTarget.style.color = 'white';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                        e.currentTarget.style.color = '#1890ff';
+                      }}
+                      title="Dashboard Link"
+                    />
+                  )}
+                  
+                  <Space align="center" style={{ width: '100%', height: '80px' }} className="role-selector-container">
+                    {/* User Picture */}
+                    <Avatar
+                      src={getUserPicture(user)}
+                      size={48}
+                    >
+                      {getUserDisplayName(user).charAt(0).toUpperCase()}
+                    </Avatar>
+                    
+                    {/* User Info */}
+                    <Space direction="vertical" style={{ flex: 1 }}>
+                      <Typography.Text strong>
+                        {getUserDisplayName(user)}
+                      </Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+                        ID: {user.id}
+                      </Typography.Text>
+                    </Space>
+                    
+                    {/* Role Selector - Right Aligned */}
+                    <div>
+                      <Select
+                        value={isRoleValid(user.id) ? (userRoles[user.id] || 'user') : undefined}
+                        onChange={(value) => handleRoleChange(user.id, value)}
+                        disabled={loading}
+                        style={{ minWidth: 120 }}
+                        size="small"
+                        status={isRoleValid(user.id) ? '' : 'error'}
+                        placeholder={isRoleValid(user.id) ? undefined : 'Select Role...'}
+                      >
+                        {getAvailableRoles().map(role => (
+                          <Select.Option key={role} value={role}>
+                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </div>
+                  </Space>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+          
+          {/* Add Guest User Button */}
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={() => setGuestModalVisible(true)}
+            disabled={loading}
+            style={{ width: '100%', marginTop: 16 }}
+          >
+            Add Guest User
+          </Button>
+        </>
       ) : (
-        <Typography.Text type="secondary" style={{ textAlign: 'center', display: 'block', padding: '40px 0' }}>
-          No users found.
-        </Typography.Text>
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: '24px' }}>
+            No users found.
+          </Typography.Text>
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={() => setGuestModalVisible(true)}
+            disabled={loading}
+            style={{ width: '100%', marginTop: 16 }}
+          >
+            Add Guest User
+          </Button>
+        </div>
       )}
 
       {/* Role Edit Modal */}
@@ -237,6 +423,25 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
         onSuccess={onSuccess}
         onError={onError}
         onDataChange={onDataChange}
+      />
+
+      {/* Guest User Modal */}
+      <GuestUserModal
+        visible={guestModalVisible}
+        onClose={() => setGuestModalVisible(false)}
+        onSuccess={onSuccess}
+        onError={onError}
+        onDataChange={onDataChange}
+        data={data}
+      />
+
+      {/* Dashboard Link Modal */}
+      <DashboardLinkModal
+        visible={dashboardLinkModalVisible}
+        onClose={handleCloseDashboardLinkModal}
+        guestUser={selectedGuestUser}
+        onSuccess={onSuccess}
+        onError={onError}
       />
     </div>
   );
