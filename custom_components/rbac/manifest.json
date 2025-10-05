@@ -1,14 +1,12 @@
 {
   "domain": "rbac",
   "name": "RBAC Middleware",
-  "version": "1.0.0",
+  "codeowners": ["@SamAthanas"],
+  "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/SamAthanas/user-rbac",
+  "iot_class": "local_push",
   "issue_tracker": "https://github.com/SamAthanas/user-rbac/issues",
   "requirements": ["PyYAML"],
-  "dependencies": [],
-  "codeowners": ["@SamAthanas"],
-  "iot_class": "local_push",
-  "config_flow": true,
-  "platforms": ["sensor"],
-  "description": "Role-Based Access Control middleware for Home Assistant with sidebar panel configuration page."
+  "version": "1.0.0"
 }
