@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from datetime import datetime
 
 import yaml
+import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
@@ -15,10 +16,13 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import Platform
 from homeassistant.helpers.template import Template
+import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "rbac"
+
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 
 class RBACConfigURLSensor(SensorEntity):

@@ -5,10 +5,8 @@
   "documentation": "https://github.com/SamAthanas/user-rbac",
   "issue_tracker": "https://github.com/SamAthanas/user-rbac/issues",
   "requirements": ["PyYAML"],
-  "dependencies": [],
+  "dependencies": ["http"],
   "codeowners": ["@SamAthanas"],
   "config_flow": true,
-  "platforms": ["sensor"],
-  "description": "Role-Based Access Control middleware for Home Assistant with sidebar panel configuration page.",
-  "homeassistant": "2023.1.0"
+  "iot_class": "local_push"
 }
