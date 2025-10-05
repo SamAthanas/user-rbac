@@ -4,7 +4,7 @@ import preact from '@preact/preset-vite'
 export default defineConfig({
   plugins: [preact()],
   build: {
-    outDir: '../www/community/rbac',
+    outDir: '../custom_components/rbac/www',
     rollupOptions: {
       input: 'src/index.html',
       output: {
@@ -19,5 +19,5 @@ export default defineConfig({
       }
     }
   },
-  base: '/local/community/rbac/'
+  base: '/api/rbac/static/'
 })

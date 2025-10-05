@@ -36,8 +36,8 @@ fi
 
 # Build paths
 frontend_dir="$(pwd)/frontend"
-frontend_source="$(pwd)/www/community/rbac"
-frontend_target="$HA_SERVER_USER@$HA_SERVER_HOST:/config/www/community/rbac"
+frontend_source="$(pwd)/custom_components/rbac/www"
+frontend_target="$HA_SERVER_USER@$HA_SERVER_HOST:/config/custom_components/rbac/www"
 
 # Check if frontend directory exists
 if [ ! -d "$frontend_dir" ]; then
@@ -64,8 +64,23 @@ echo "🔨 Building Preact frontend..."
 npm run build
 
 # Check if build was successful
-if [ ! -f "../www/community/rbac/config.html" ]; then
-    echo "❌ Build failed - config.html not found in ../www/community/rbac/"
+if [ ! -f "../custom_components/rbac/www/config.html" ]; then
+    echo "❌ Build failed - config.html not found in ../custom_components/rbac/www/"
+    exit 1
+fi
+
+# Create the frontend directory structure on the server first
+echo "📁 Creating frontend directory structure..."
+mkdir_command="sshpass -p \"$HA_SERVER_PASSWORD\" ssh -o StrictHostKeyChecking=no"
+if [ "$HA_SERVER_PORT" != "22" ]; then
+    mkdir_command="$mkdir_command -p $HA_SERVER_PORT"
+fi
+mkdir_command="$mkdir_command $HA_SERVER_USER@$HA_SERVER_HOST 'mkdir -p /config/custom_components/rbac/www'"
+
+if eval "$mkdir_command"; then
+    echo "✅ Frontend directory structure created"
+else
+    echo "❌ Failed to create frontend directory structure"
     exit 1
 fi
 

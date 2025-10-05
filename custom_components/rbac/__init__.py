@@ -30,7 +30,7 @@ class RBACConfigURLSensor(SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_config_url"
         self._attr_icon = "mdi:web"
         self._attr_device_class = "url"
-        self._attr_native_value = f"{base_url}/local/community/rbac/config.html" if base_url else "/local/community/rbac/config.html"
+        self._attr_native_value = f"{base_url}/api/rbac/static/config.html" if base_url else "/api/rbac/static/config.html"
 
 
 async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
@@ -125,6 +125,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Set up services
     from . import services
     await services.async_setup_services(hass)
+    
+    # Set up static file serving
+    await services.async_setup_static_routes(hass)
     
     # Create RBAC device with config URL entity
     # Skip device setup for YAML-only setup (no config entry)
@@ -1487,7 +1490,7 @@ async def _register_sidebar_panel(hass: HomeAssistant):
                 sidebar_icon="mdi:shield-account",
                 frontend_url_path="rbac-config",
                 config={
-                    "url": "/local/community/rbac/config.html",
+                    "url": "/api/rbac/static/config.html",
                     "title": "RBAC Configuration"
                 },
                 require_admin=True
@@ -1514,14 +1517,14 @@ async def _register_sidebar_panel(hass: HomeAssistant):
         await asyncio.sleep(2)
         
         if not await _do_panel_registration():
-            _LOGGER.warning("Could not register RBAC sidebar panel. Users will need to access the config page manually at /local/community/rbac/config.html")
+            _LOGGER.warning("Could not register RBAC sidebar panel. Users will need to access the config page manually at /api/rbac/static/config.html")
     
     # Listen for the frontend ready event
     try:
         hass.bus.async_listen_once("frontend_ready", _on_frontend_ready)
         _LOGGER.info("RBAC panel registration scheduled for when frontend is ready")
     except Exception as e:
-        _LOGGER.warning(f"Could not schedule RBAC panel registration: {e}. Users will need to access the config page manually at /local/community/rbac/config.html")
+        _LOGGER.warning(f"Could not schedule RBAC panel registration: {e}. Users will need to access the config page manually at /api/rbac/static/config.html")
 
 
 def _is_top_level_user(hass: HomeAssistant, user_id: str) -> bool:

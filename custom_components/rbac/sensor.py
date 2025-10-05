@@ -45,7 +45,7 @@ class RBACConfigURLSensor(RBACBaseSensor):
         base_url = self._hass.config.external_url or self._hass.config.internal_url
         if not base_url:
             base_url = f"http://{self._hass.config.api.host}:{self._hass.config.api.port}"
-        return f"{base_url}/local/community/rbac/config.html"
+        return f"{base_url}/api/rbac/static/config.html"
 
 
 class RBACEnabledSensor(RBACBaseSensor):

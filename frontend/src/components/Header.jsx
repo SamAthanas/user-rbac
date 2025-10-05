@@ -66,7 +66,7 @@ export function Header({ currentUser = null, isDarkMode = false, onThemeToggle }
     // Open the config page in a new tab using the direct URL
     const currentUrl = window.location.href;
     const url = new URL(currentUrl);
-    const configUrl = `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/local/community/rbac/config.html`;
+    const configUrl = `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/api/rbac/static/config.html`;
     window.open(configUrl, '_blank');
   };
 
