@@ -1,12 +1,12 @@
 {
   "domain": "rbac",
   "name": "RBAC Middleware",
-  "version": "1.0.0",
-  "documentation": "https://github.com/SamAthanas/user-rbac",
-  "issue_tracker": "https://github.com/SamAthanas/user-rbac/issues",
-  "requirements": ["PyYAML"],
-  "dependencies": ["http"],
   "codeowners": ["@SamAthanas"],
   "config_flow": true,
-  "iot_class": "local_push"
+  "dependencies": ["http"],
+  "documentation": "https://github.com/SamAthanas/user-rbac",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/SamAthanas/user-rbac/issues",
+  "requirements": ["PyYAML"],
+  "version": "1.0.0"
 }
