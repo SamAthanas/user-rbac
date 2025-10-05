@@ -1038,7 +1038,7 @@ export function App() {
                       <Typography.Text strong>Config URL</Typography.Text>
                       <br />
                       <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
-                        /local/community/rbac/config.html
+                        /api/rbac/static/config.html
                       </Typography.Text>
                     </div>
                   </div>

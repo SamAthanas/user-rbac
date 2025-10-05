@@ -1,6 +1,7 @@
 """Services for the RBAC integration."""
 import logging
 import os
+import mimetypes
 from typing import Any, Dict
 
 import voluptuous as vol
@@ -10,6 +11,8 @@ from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, Supp
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util.json import JsonObjectType
+from homeassistant.components.http import HomeAssistantView
+from aiohttp import web
 
 from . import (
     DOMAIN, 
@@ -1412,3 +1415,65 @@ class RBACYamlEditorView(HomeAssistantView):
         except Exception as e:
             _LOGGER.error(f"Error updating YAML content: {e}")
             return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACStaticView(HomeAssistantView):
+    """View to serve static files for RBAC frontend."""
+    
+    url = "/api/rbac/static/{file_path:.+}"
+    name = "api:rbac:static"
+    requires_auth = False
+    
+    def __init__(self, hass: HomeAssistant):
+        """Initialize the static view."""
+        self.hass = hass
+        self._www_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "www")
+    
+    async def get(self, request: web.Request, file_path: str) -> web.Response:
+        """Serve static files."""
+        try:
+            # Security: prevent directory traversal
+            if ".." in file_path or file_path.startswith("/"):
+                return web.Response(status=403, text="Forbidden")
+            
+            # Construct full file path
+            full_path = os.path.join(self._www_path, file_path)
+            
+            # Check if file exists
+            if not os.path.exists(full_path) or not os.path.isfile(full_path):
+                return web.Response(status=404, text="File not found")
+            
+            # Get MIME type
+            mime_type, _ = mimetypes.guess_type(full_path)
+            if not mime_type:
+                mime_type = "application/octet-stream"
+            
+            # Read file content
+            with open(full_path, 'rb') as f:
+                content = f.read()
+            
+            # Set appropriate headers
+            headers = {
+                "Content-Type": mime_type,
+                "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
+            }
+            
+            # Special handling for JavaScript files
+            if file_path.endswith('.js'):
+                headers["Content-Type"] = "application/javascript"
+            elif file_path.endswith('.css'):
+                headers["Content-Type"] = "text/css"
+            elif file_path.endswith('.html'):
+                headers["Content-Type"] = "text/html"
+            
+            return web.Response(body=content, headers=headers)
+            
+        except Exception as e:
+            _LOGGER.error(f"Error serving static file {file_path}: {e}")
+            return web.Response(status=500, text="Internal server error")
+
+
+async def async_setup_static_routes(hass: HomeAssistant) -> None:
+    """Set up static file serving routes."""
+    hass.http.register_view(RBACStaticView(hass))
+    _LOGGER.info("RBAC static file serving routes registered")

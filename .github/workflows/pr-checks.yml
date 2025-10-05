@@ -30,11 +30,11 @@ jobs:
       
     - name: Verify build output
       run: |
-        if [ ! -f "www/community/rbac/config.html" ]; then
+        if [ ! -f "custom_components/rbac/www/config.html" ]; then
           echo "❌ Frontend build failed - config.html not found"
           exit 1
         fi
-        if [ ! -f "www/community/rbac/config.js" ]; then
+        if [ ! -f "custom_components/rbac/www/config.js" ]; then
           echo "❌ Frontend build failed - config.js not found"
           exit 1
         fi
@@ -42,11 +42,26 @@ jobs:
 
   backend-check:
     runs-on: ubuntu-latest
-    if: contains(github.event.pull_request.changed_files, 'custom_components/') || contains(github.event.pull_request.changed_files, '.github/workflows/')
+    if: contains(github.event.pull_request.changed_files, 'custom_components/') || contains(github.event.pull_request.changed_files, 'frontend/') || contains(github.event.pull_request.changed_files, '.github/workflows/')
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+      
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
       
     - name: Setup Python
       uses: actions/setup-python@v4

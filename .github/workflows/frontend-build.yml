@@ -36,11 +36,11 @@ jobs:
       
     - name: Verify build output
       run: |
-        if [ ! -f "www/community/rbac/config.html" ]; then
+        if [ ! -f "custom_components/rbac/www/config.html" ]; then
           echo "❌ Build failed - config.html not found"
           exit 1
         fi
-        if [ ! -f "www/community/rbac/config.js" ]; then
+        if [ ! -f "custom_components/rbac/www/config.js" ]; then
           echo "❌ Build failed - config.js not found"
           exit 1
         fi
@@ -50,5 +50,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: frontend-build
-        path: www/community/rbac/
+        path: custom_components/rbac/www/
         retention-days: 1

@@ -38,8 +38,8 @@ fi
 backend_source="$(pwd)/custom_components/rbac"
 backend_target="$HA_SERVER_USER@$HA_SERVER_HOST:$HA_SERVER_PATH"
 
-frontend_source="$(pwd)/www/community/rbac"
-frontend_target="$HA_SERVER_USER@$HA_SERVER_HOST:/config/www/community/rbac"
+frontend_source="$(pwd)/custom_components/rbac/www"
+frontend_target="$HA_SERVER_USER@$HA_SERVER_HOST:/config/custom_components/rbac/www"
 
 # Check if source directories exist
 if [ ! -d "$backend_source" ]; then
@@ -108,6 +108,21 @@ echo "✅ Backend deployment successful!"
 # Deploy frontend (JavaScript files)
 echo "📦 Deploying RBAC frontend files..."
 
+# Create the frontend directory structure on the server first
+echo "📁 Creating frontend directory structure..."
+mkdir_command="sshpass -p \"$HA_SERVER_PASSWORD\" ssh -o StrictHostKeyChecking=no"
+if [ "$HA_SERVER_PORT" != "22" ]; then
+    mkdir_command="$mkdir_command -p $HA_SERVER_PORT"
+fi
+mkdir_command="$mkdir_command $HA_SERVER_USER@$HA_SERVER_HOST 'mkdir -p /config/custom_components/rbac/www'"
+
+if eval "$mkdir_command"; then
+    echo "✅ Frontend directory structure created"
+else
+    echo "❌ Failed to create frontend directory structure"
+    exit 1
+fi
+
 # Deploy individual files (not directories)
 for file in "$frontend_source"/*; do
     if [ -f "$file" ]; then
@@ -149,7 +164,7 @@ if eval "$restart_command"; then
     echo "   5. Add frontend JavaScript to configuration.yaml:"
     echo "      frontend:"
     echo "        extra_module_url:"
-    echo "          - /local/community/rbac/rbac.js"
+    echo "          - /api/rbac/static/rbac.js"
     echo "   6. Use the RBAC services to manage user access"
 else
     echo "⚠️  Deployment successful but restart failed!"
