@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Home Assistant RBAC Logo" width="180" />
+  <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/logo.png" alt="Home Assistant RBAC Logo" width="180" />
 </p>
 
 <h1 align="center">🏠 Home Assistant RBAC Middleware</h1>
@@ -15,15 +15,15 @@
   <table>
     <tr>
       <td align="center">
-        <a href="screenshots/editing-role.png" target="_blank">
-          <img src="screenshots/editing-role.png" alt="Role Editing" width="350"/>
+        <a href="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/editing-role.png" target="_blank">
+          <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/editing-role.png" alt="Role Editing" width="350"/>
         </a>
         <br><strong>Role Editing</strong>
         <br><em>Detailed role configuration and permission settings</em>
       </td>
       <td align="center">
-        <a href="screenshots/editing-guest-role.png" target="_blank">
-          <img src="screenshots/editing-guest-role.png" alt="Guest Role Configuration" width="350"/>
+        <a href="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/editing-guest-role.png" target="_blank">
+          <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/editing-guest-role.png" alt="Guest Role Configuration" width="350"/>
         </a>
         <br><strong>Guest Role Configuration</strong>
         <br><em>Guest user role with template condition</em>
@@ -31,15 +31,15 @@
     </tr>
     <tr>
       <td align="center">
-        <a href="screenshots/role-management.png" target="_blank">
-          <img src="screenshots/role-management.png" alt="Role Management" width="350"/>
+        <a href="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/role-management.png" target="_blank">
+          <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/role-management.png" alt="Role Management" width="350"/>
         </a>
         <br><strong>Role Management</strong>
         <br><em>Overview of all configured roles and their settings</em>
       </td>
       <td align="center">
-        <a href="screenshots/user-role-assignment.png" target="_blank">
-          <img src="screenshots/user-role-assignment.png" alt="User Role Assignment" width="350"/>
+        <a href="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/user-role-assignment.png" target="_blank">
+          <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/user-role-assignment.png" alt="User Role Assignment" width="350"/>
         </a>
         <br><strong>User Role Assignment</strong>
         <br><em>Assigning roles to Home Assistant users</em>
@@ -47,15 +47,15 @@
     </tr>
     <tr>
       <td align="center">
-        <a href="screenshots/settings-and-default-restrictions.png" target="_blank">
-          <img src="screenshots/settings-and-default-restrictions.png" alt="Settings and Default Restrictions" width="350"/>
+        <a href="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/settings-and-default-restrictions.png" target="_blank">
+          <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/settings-and-default-restrictions.png" alt="Settings and Default Restrictions" width="350"/>
         </a>
         <br><strong>Settings and Default Restrictions</strong>
         <br><em>System-wide settings and default access controls</em>
       </td>
       <td align="center">
-        <a href="screenshots/deny-log.png" target="_blank">
-          <img src="screenshots/deny-log.png" alt="Deny Log" width="350"/>
+        <a href="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/deny-log.png" target="_blank">
+          <img src="https://raw.githubusercontent.com/SamAthanas/user-rbac/main/screenshots/deny-log.png" alt="Deny Log" width="350"/>
         </a>
         <br><strong>Deny Log</strong>
         <br><em>Track and monitor denied access attempts</em>
@@ -84,6 +84,13 @@ Due to the nature of this application patching core functions, its possible that
 - **Deploy Scripts for Development**: vs-code scripts included to auto ssh into server to copy files based on .env variables, and auto restarts HA after deployment for streamlined dev workflow.
 
 ## 🚀 Installation
+
+### HACS Store
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=SamAthanas&category=Integration&repository=user-rbac)
+
+> After installation, restart home assistant and add the RBAC Middleware Service. Configure the settings in the side panel.
+---
+### (Manual Method)
 - Copy the files to your server first
   - Component: custom_components/rbac
   - Frontend Script (Add to resources, Javascript Module): /api/rbac/static/rbac.js
