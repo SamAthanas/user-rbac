@@ -1,6 +1,5 @@
 {
   "name": "RBAC Middleware",
   "content_in_root": false,
-  "filename": "rbac",
   "render_readme": true
 }
