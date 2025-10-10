@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guest Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
+    
+    <!-- Load Material Icons font -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <!-- Import map for Lit modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "lit": "https://cdn.jsdelivr.net/npm/lit@3/index.js",
+            "lit/decorators": "https://cdn.jsdelivr.net/npm/lit@3/decorators.js",
+            "lit/directives/class-map": "https://cdn.jsdelivr.net/npm/lit@3/directives/class-map.js",
+            "lit/directives/if-defined": "https://cdn.jsdelivr.net/npm/lit@3/directives/if-defined.js"
+        }
+    }
+    </script>
+    
+    <!-- Load Lit from CDN -->
+    <script type="module">
+        import { LitElement, html, css, nothing } from 'https://cdn.jsdelivr.net/npm/lit@3/index.js';
+        import { customElement, property, state } from 'https://cdn.jsdelivr.net/npm/lit@3/decorators.js';
+        
+        // Make Lit available globally for components
+        window.LitElement = LitElement;
+        window.html = html;
+        window.css = css;
+        window.nothing = nothing;
+        window.customElement = customElement;
+        window.property = property;
+        window.state = state;
+        
+        console.log('Lit loaded from CDN and import map configured');
+    </script>
+    
+    <!-- Load official HA components (compiled) -->
+    <script type="module" src="/api/rbac/static/cards/dist/ha-svg-icon.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/ha-card.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/ha-button.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/ha-icon.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/ha-spinner.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/ha-dialog.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/hui-button-card.js"></script>
+    <script type="module" src="/api/rbac/static/cards/dist/hui-entity-card.js"></script>
+    
+    <!-- Custom cards will be loaded dynamically from dashboard.yml resources array -->
+    
+    <script type="module">
+        function startDashboard() {
+        // Dashboard functionality
+        let hassInstance = null;
+        let dashboardData = null;
+        let user_id = null;
+        
+        // Debug: Check if custom elements are registered
+        console.log('Checking custom element registration...');
+        const elements = ['ha-card', 'ha-button', 'ha-icon', 'ha-spinner', 'ha-svg-icon', 'ha-dialog', 'hui-button-card', 'hui-entity-card'];
+        elements.forEach(tagName => {
+            const isRegistered = customElements.get(tagName);
+            console.log(`${tagName} registered:`, !!isRegistered);
+        });
+        
+        // Wait a bit for components to load, then check again
+        setTimeout(() => {
+            console.log('Checking custom element registration after delay...');
+            elements.forEach(tagName => {
+                const isRegistered = customElements.get(tagName);
+                console.log(`${tagName} registered:`, !!isRegistered);
+            });
+        }, 1000);
+        
+        // Test Material Icons font loading
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Testing Material Icons font...');
+            const testSpan = document.createElement('span');
+            testSpan.style.fontFamily = 'Material Icons';
+            testSpan.style.fontSize = '24px';
+            testSpan.textContent = 'favorite';
+            testSpan.style.position = 'absolute';
+            testSpan.style.left = '-9999px';
+            document.body.appendChild(testSpan);
+            
+            setTimeout(() => {
+                const computedStyle = window.getComputedStyle(testSpan);
+                console.log('Material Icons font family:', computedStyle.fontFamily);
+                console.log('Test icon rendered:', testSpan.textContent);
+                document.body.removeChild(testSpan);
+            }, 1000);
+        });
+        
+        // Extract user_id from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        user_id = urlParams.get('user_id') || 'demo';
+        
+        console.log('Dashboard loading for user:', user_id);
+        
+               // Load hass instance
+               async function loadHassInstance() {
+                   try {
+                       // Try to get hass from window first
+                       if (window.hass) {
+                           hassInstance = window.hass;
+                           console.log('Using window.hass');
+                           return;
+                       }
+                       
+                       // Fallback to API
+                       const response = await fetch('/api/rbac/hass-instance');
+                       if (response.ok) {
+                           hassInstance = await response.json();
+                           console.log('Loaded hass instance from API');
+                           
+                           // Mock fetch to intercept API calls from custom cards
+                           const originalFetch = window.fetch;
+                           window.fetch = async function(url, options = {}) {
+                               // Intercept Home Assistant API calls
+                               if (typeof url === 'string' && url.includes('/api/')) {
+                                   // Route through our mock API
+                                   if (url.includes('/api/areas') || url.includes('/api/scenes/')) {
+                                       const mockUrl = url.replace('/api/', '/api/rbac/mock-api/');
+                                       console.log('Intercepting API call:', url, '->', mockUrl);
+                                       return originalFetch(mockUrl, options);
+                                   }
+                               }
+                               return originalFetch(url, options);
+                           };
+
+                           // Add callService method to hass instance
+                           hassInstance.callService = async function(domain, service, serviceData = {}) {
+                               try {
+                                   // Handle special cases where target needs to be at top level
+                                   let requestBody;
+                                   if (serviceData.target) {
+                                       // For services like hue.activate_scene that need target at top level
+                                       requestBody = {
+                                           domain: domain,
+                                           service: service,
+                                           target: serviceData.target,
+                                           service_data: serviceData.data || {}
+                                       };
+                                   } else {
+                                       // Standard service call
+                                       requestBody = {
+                                           domain: domain,
+                                           service: service,
+                                           service_data: serviceData
+                                       };
+                                   }
+                                   
+                                   const response = await fetch('/api/rbac/service-call', {
+                                       method: 'POST',
+                                       headers: {
+                                           'Content-Type': 'application/json',
+                                       },
+                                       body: JSON.stringify(requestBody)
+                                   });
+
+                                   if (response.ok) {
+                                       const result = await response.json();
+                                       console.log('Service call successful:', result);
+                                       return result;
+                                   } else {
+                                       const error = await response.json();
+                                       console.error('Service call failed:', error);
+                                       throw new Error(error.error || 'Service call failed');
+                                   }
+                               } catch (error) {
+                                   console.error('Error calling service:', error);
+                                   throw error;
+                               }
+                           };
+                           
+                           // Also make callService available globally for any component that needs it
+                           window.callService = hassInstance.callService;
+                           
+                           console.log('Added callService method to hass instance and global scope');
+                       } else {
+                           console.error('Failed to load hass instance from API');
+                           hassInstance = null;
+                       }
+                   } catch (error) {
+                       console.error('Error loading hass instance:', error);
+                       hassInstance = null;
+                   }
+               }
+        
+        // Load custom card scripts from resources array
+        async function loadResources(resources) {
+            if (!resources || !Array.isArray(resources)) {
+                console.log('No custom card resources to load');
+                return;
+            }
+            
+            console.log('Loading custom card resources:', resources);
+            
+            for (const resource of resources) {
+                try {
+                    const script = document.createElement('script');
+                    script.type = resource.type || 'module';
+                    script.src = resource.url;
+                    
+                    // Add error handling
+                    script.onerror = (error) => {
+                        console.error(`Failed to load custom card resource: ${resource.url}`, error);
+                    };
+                    
+                    script.onload = () => {
+                        console.log(`Successfully loaded custom card resource: ${resource.url}`);
+                        // Check if any custom elements were registered
+                        setTimeout(() => {
+                            console.log('Available custom elements after loading:', 
+                                Array.from(customElements.entries()).map(([name, constructor]) => name));
+                        }, 100);
+                    };
+                    
+                    document.head.appendChild(script);
+                } catch (error) {
+                    console.error(`Error loading custom card resource ${resource.url}:`, error);
+                }
+            }
+        }
+
+        // Load dashboard data
+        async function loadDashboardData() {
+            try {
+                const response = await fetch(`/api/rbac/dashboard/${user_id}`);
+                if (response.ok) {
+                    dashboardData = await response.json();
+                    console.log('Loaded dashboard data:', dashboardData);
+                    
+                    // Load custom card resources first, then render cards
+                    if (dashboardData.resources) {
+                        await loadResources(dashboardData.resources);
+                        // Wait a bit for custom scripts to load before rendering cards
+                        setTimeout(() => {
+                            renderDashboard();
+                        }, 1000);
+                    } else {
+                        renderDashboard();
+                    }
+                } else {
+                    console.error('Failed to load dashboard data');
+                    dashboardData = { cards: [] };
+                    renderDashboard();
+                }
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+                dashboardData = { cards: [] };
+                renderDashboard();
+            }
+        }
+        
+        // Create card based on type - using official HA components
+        function createCard(config) {
+            console.log('Creating card:', config.type, config);
+            
+            // Check if custom element is registered
+            if (config.type.includes('-')) {
+                const isRegistered = customElements.get(config.type);
+                console.log(`Custom element ${config.type} registered:`, !!isRegistered);
+                
+                if (!isRegistered) {
+                    console.warn(`Custom element ${config.type} not registered, trying to create anyway`);
+                }
+            }
+            
+            // Handle special cases for button cards
+            if (config.type === 'button') {
+                config.type = 'hui-button-card';
+            }
+            
+            // Create the element directly by tag name
+            try {
+                const element = document.createElement(config.type);
+                console.log(`Created element:`, element, 'tagName:', element.tagName);
+                
+                // Set properties dynamically
+                Object.keys(config).forEach(key => {
+                    if (key !== 'type') {
+                        // Convert camelCase to kebab-case for attributes
+                        const attrName = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+                        
+                        // Try setting as property first, then as attribute
+                        if (element[key] !== undefined) {
+                            element[key] = config[key];
+                            console.log(`Set property ${key}:`, config[key]);
+                        } else {
+                            element.setAttribute(attrName, config[key]);
+                            console.log(`Set attribute ${attrName}:`, config[key]);
+                        }
+                    }
+                });
+                
+                // Always set hass if available
+                if (hassInstance) {
+                    element.hass = hassInstance;
+                    console.log('Set hass instance on element');
+                }
+                
+                // Try to call setConfig if it exists
+                if (typeof element.setConfig === 'function') {
+                    console.log('Calling setConfig on element');
+                    element.setConfig(config);
+                }
+                
+                return element;
+            } catch (error) {
+                console.warn(`Failed to create element ${config.type}:`, error);
+                return createGenericCard(config);
+            }
+        }
+        
+        // Create generic card for unknown types
+        function createGenericCard(config) {
+            const card = document.createElement('ha-card');
+            card.setAttribute('header', `Unknown Card: ${config.type}`);
+            card.innerHTML = `<p>Card type "${config.type}" is not implemented yet.</p>`;
+            return card;
+        }
+        
+        // Render dashboard
+        function renderDashboard() {
+            const container = document.getElementById('dashboard-container');
+            if (!container) {
+                console.error('Dashboard container not found');
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            if (!dashboardData || !dashboardData.cards || dashboardData.cards.length === 0) {
+                container.innerHTML = '<ha-card header="No Cards"><p>No cards configured for this dashboard.</p></ha-card>';
+                return;
+            }
+            
+            console.log('Rendering', dashboardData.cards.length, 'cards');
+            
+            dashboardData.cards.forEach((cardConfig, index) => {
+                try {
+                    const cardElement = createCard(cardConfig);
+                    container.appendChild(cardElement);
+                } catch (error) {
+                    console.error(`Error creating card ${index}:`, error);
+                    const errorCard = document.createElement('ha-card');
+                    errorCard.setAttribute('header', 'Card Error');
+                    errorCard.innerHTML = `<p>Error creating card: ${error.message}</p>`;
+                    container.appendChild(errorCard);
+                }
+            });
+        }
+        
+        // Initialize dashboard
+        async function initDashboard() {
+            console.log('Initializing dashboard...');
+            
+            await loadHassInstance();
+            await loadDashboardData();
+            
+            renderDashboard();
+            
+            // Set up refresh interval
+            setInterval(async () => {
+                await loadHassInstance();
+                await loadDashboardData();
+                renderDashboard();
+            }, 30000); // Refresh every 30 seconds
+        }
+        
+            // Start when DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initDashboard);
+            } else {
+                initDashboard();
+            }
+        }
+        
+        // Start the dashboard
+        startDashboard();
+    </script>
+    
+    <style>
+        :root {
+            --card-background-color: rgba(10, 10, 10, 0.4);
+            --primary-text-color: #FFF;
+            --secondary-text-color: #d3d3d3;
+            --primary-color: #ff9f09;
+            --primary-hover-color: #ff9800;
+            
+            /* Hue-like-light-card specific variables */
+            --ha-dialog-border-radius: 28px;
+            --hue-background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            background: var(--primary-background-color, #2c2c2e);
+            color: var(--primary-text-color, #FFF);
+            font-family: Roboto, sans-serif;
+        }
+        
+        #dashboard-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: var(--primary-text-color, #FFF);
+        }
+    </style>
+</head>
+<body>
+    <h1>Guest Dashboard</h1>
+    <div id="dashboard-container">
+        <ha-card header="Loading...">
+            <ha-spinner></ha-spinner>
+            <p>Loading dashboard...</p>
+        </ha-card>
+    </div>
+</body>
+</html>

@@ -66,6 +66,52 @@ ADD_USER_SCHEMA = vol.Schema({
 GET_AVAILABLE_ROLES_SCHEMA = vol.Schema({})
 
 
+def _create_guest_dashboard(hass: HomeAssistant, guest_id: str) -> bool:
+    """Create dashboard directory and empty dashboard.yml for a guest user."""
+    try:
+        www_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "www")
+        dashboards_path = os.path.join(www_path, "dashboards")
+        guest_dashboard_path = os.path.join(dashboards_path, guest_id)
+        
+        # Create guest dashboard directory
+        os.makedirs(guest_dashboard_path, exist_ok=True)
+        
+        # Create empty dashboard.yml file
+        dashboard_yml_path = os.path.join(guest_dashboard_path, "dashboard.yml")
+        if not os.path.exists(dashboard_yml_path):
+            empty_dashboard = {"cards": []}
+            with open(dashboard_yml_path, 'w', encoding='utf-8') as f:
+                yaml.dump(empty_dashboard, f, default_flow_style=False, indent=2)
+            
+            _LOGGER.info(f"Created empty dashboard for guest user: {guest_id}")
+            return True
+        
+        return True
+    except Exception as e:
+        _LOGGER.error(f"Error creating dashboard for guest user {guest_id}: {e}")
+        return False
+
+
+def _remove_guest_dashboard(hass: HomeAssistant, guest_id: str) -> bool:
+    """Remove dashboard directory and files for a guest user."""
+    try:
+        www_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "www")
+        dashboards_path = os.path.join(www_path, "dashboards")
+        guest_dashboard_path = os.path.join(dashboards_path, guest_id)
+        
+        # Remove guest dashboard directory and all contents
+        if os.path.exists(guest_dashboard_path):
+            import shutil
+            shutil.rmtree(guest_dashboard_path)
+            _LOGGER.info(f"Removed dashboard for guest user: {guest_id}")
+            return True
+        
+        return True
+    except Exception as e:
+        _LOGGER.error(f"Error removing dashboard for guest user {guest_id}: {e}")
+        return False
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up the RBAC services."""
     
@@ -571,8 +617,10 @@ class RBACConfigView(HomeAssistantView):
                 access_config["users"][guest_id] = {
                     "role": "guest",
                     "name": guest_name,
-                    "is_guest": True
+                    "is_guest": True,
+                    "enabled": True
                 }
+                _create_guest_dashboard(hass, guest_id)
                 
                 _LOGGER.info(f"Added guest user: {guest_name} with ID: {guest_id}")
                 
@@ -586,15 +634,40 @@ class RBACConfigView(HomeAssistantView):
                 if "users" not in access_config or guest_id not in access_config["users"]:
                     return self.json({"error": "Guest user not found"}, status_code=404)
                 
+                guest_config = access_config["users"][guest_id]
+                if not guest_config.get("is_guest", False):
+                    return self.json({"error": "User is not a guest user"}, status_code=400)
+
+                del access_config["users"][guest_id]
+
+                _remove_guest_dashboard(hass, guest_id)
+                
+                _LOGGER.info(f"Removed guest user with ID: {guest_id}")
+                
+            elif action == "toggle_guest_user":
+                guest_id = data.get("guestId")
+                enabled = data.get("enabled")
+                
+                if not guest_id:
+                    return self.json({"error": "Missing guestId"}, status_code=400)
+                
+                if enabled is None:
+                    return self.json({"error": "Missing enabled status"}, status_code=400)
+                
+                # Check if guest user exists
+                if "users" not in access_config or guest_id not in access_config["users"]:
+                    return self.json({"error": "Guest user not found"}, status_code=404)
+                
                 # Check if it's actually a guest user
                 guest_config = access_config["users"][guest_id]
                 if not guest_config.get("is_guest", False):
                     return self.json({"error": "User is not a guest user"}, status_code=400)
                 
-                # Remove guest user from configuration
-                del access_config["users"][guest_id]
+                # Update guest user enabled status
+                access_config["users"][guest_id]["enabled"] = enabled
                 
-                _LOGGER.info(f"Removed guest user with ID: {guest_id}")
+                action_text = "enabled" if enabled else "disabled"
+                _LOGGER.info(f"Guest user {guest_id} {action_text}")
                 
             elif action == "update_default_restrictions":
                 restrictions = data.get("restrictions")
@@ -716,7 +789,8 @@ class RBACUsersView(HomeAssistantView):
                             "name": guest_config.get("name", f"Guest {guest_id[:8]}"),
                             "entity_picture": None,
                             "person_entity_id": None,
-                            "isGuest": True
+                            "isGuest": True,
+                            "enabled": guest_config.get("enabled", True)  # Default to enabled if not specified
                         }
                         users.append(user_data)
             
@@ -1544,3 +1618,257 @@ async def async_setup_static_routes(hass: HomeAssistant) -> None:
     """Set up static file serving routes."""
     hass.http.register_view(RBACStaticView(hass))
     _LOGGER.info("RBAC static file serving routes registered")
+
+
+class RBACHassInstanceView(HomeAssistantView):
+    """View to provide Home Assistant instance data for dashboard."""
+    
+    url = "/api/rbac/hass-instance"
+    name = "api:rbac:hass-instance"
+    requires_auth = False
+    
+    def __init__(self, hass: HomeAssistant):
+        """Initialize the hass instance view."""
+        self.hass = hass
+    
+    async def get(self, request: web.Request) -> web.Response:
+        """Provide Home Assistant instance data."""
+        try:
+            # Get states as object (entity_id -> state data)
+            states = {}
+            try:
+                for entity_id in self.hass.states.async_entity_ids():
+                    state = self.hass.states.get(entity_id)
+                    if state:
+                        states[entity_id] = {
+                            "entity_id": state.entity_id,
+                            "state": state.state,
+                            "attributes": dict(state.attributes),
+                            "last_changed": state.last_changed.isoformat(),
+                            "last_updated": state.last_updated.isoformat(),
+                            "context": {
+                                "id": state.context.id,
+                                "user_id": state.context.user_id,
+                                "parent_id": state.context.parent_id
+                            }
+                        }
+            except Exception as e:
+                _LOGGER.warning(f"Error getting states: {e}")
+            
+            # Get services safely
+            services = {}
+            try:
+                for domain, service_map in self.hass.services.async_services().items():
+                    services[domain] = list(service_map.keys())
+            except Exception as e:
+                _LOGGER.warning(f"Error getting services: {e}")
+            
+            # Get themes safely
+            themes = {}
+            try:
+                themes = {
+                    "default_theme": getattr(self.hass.config, 'default_theme', 'default'),
+                    "themes": {}
+                }
+                # Try to get theme data if available
+                if hasattr(self.hass, 'themes') and self.hass.themes:
+                    themes["themes"] = dict(self.hass.themes.themes) if hasattr(self.hass.themes, 'themes') else {}
+            except Exception as e:
+                _LOGGER.warning(f"Error getting themes: {e}")
+            
+            # Get configuration safely
+            config = {}
+            try:
+                config = {
+                    "location_name": getattr(self.hass.config, 'location_name', 'Home'),
+                    "latitude": getattr(self.hass.config, 'latitude', 0),
+                    "longitude": getattr(self.hass.config, 'longitude', 0),
+                    "elevation": getattr(self.hass.config, 'elevation', 0),
+                    "unit_system": {
+                        "length": getattr(self.hass.config, 'unit_system', {}).get('length', 'mi'),
+                        "mass": getattr(self.hass.config, 'unit_system', {}).get('mass', 'lb'),
+                        "temperature": getattr(self.hass.config, 'unit_system', {}).get('temperature', '°F'),
+                        "volume": getattr(self.hass.config, 'unit_system', {}).get('volume', 'gal')
+                    },
+                    "time_zone": str(getattr(self.hass.config, 'time_zone', 'UTC')),
+                    "components": list(getattr(self.hass.config, 'components', set())),
+                    "version": getattr(self.hass.config, 'version', 'unknown')
+                }
+            except Exception as e:
+                _LOGGER.warning(f"Error getting config: {e}")
+            
+            return self.json({
+                "states": states,
+                "services": services,
+                "config": config,
+                "themes": themes,
+                "callService": True
+            })
+            
+        except Exception as e:
+            _LOGGER.error(f"Error getting hass instance: {e}")
+            return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACMockAPIView(HomeAssistantView):
+    """View to provide mock Home Assistant API endpoints for custom cards."""
+    
+    url = "/api/rbac/mock-api/{endpoint:.*}"
+    name = "api:rbac:mock-api"
+    requires_auth = False
+    
+    def __init__(self, hass: HomeAssistant):
+        """Initialize the mock API view."""
+        self.hass = hass
+    
+    async def get(self, request: web.Request) -> web.Response:
+        """Handle mock API requests."""
+        try:
+            endpoint = request.match_info['endpoint']
+            
+            if endpoint == 'areas':
+                # Return areas data
+                areas = {}
+                try:
+                    if hasattr(self.hass, 'areas') and self.hass.areas:
+                        areas = dict(self.hass.areas.areas) if hasattr(self.hass.areas, 'areas') else {}
+                except Exception as e:
+                    _LOGGER.warning(f"Error getting areas: {e}")
+                
+                return self.json(areas)
+            
+            elif endpoint.startswith('scenes/'):
+                # Return scenes for a specific area
+                area_id = endpoint.split('/')[1]
+                
+                scenes = []
+                try:
+                    for entity_id in self.hass.states.async_entity_ids():
+                        if entity_id.startswith('scene.'):
+                            state = self.hass.states.get(entity_id)
+                            if state and state.attributes:
+                                # Check if this scene belongs to the requested area
+                                scene_area_id = state.attributes.get('area_id')
+                                if not scene_area_id:
+                                    # Fallback: extract area from friendly_name
+                                    friendly_name = state.attributes.get('friendly_name', '')
+                                    if friendly_name:
+                                        area_name = friendly_name.split(' ')[0]
+                                        # Find matching area
+                                        for aid, area_data in (self.hass.areas.areas if hasattr(self.hass, 'areas') and self.hass.areas else {}).items():
+                                            if area_data.get('name') == area_name:
+                                                scene_area_id = aid
+                                                break
+                                
+                                if scene_area_id == area_id:
+                                    scenes.append({
+                                        "entity_id": entity_id,
+                                        "name": state.attributes.get('friendly_name', entity_id),
+                                        "state": state.state
+                                    })
+                except Exception as e:
+                    _LOGGER.warning(f"Error getting scenes: {e}")
+                
+                return self.json(scenes)
+            
+            else:
+                return self.json({"error": f"Unknown endpoint: {endpoint}"}, status_code=404)
+                
+        except Exception as e:
+            _LOGGER.error(f"Error in mock API: {e}")
+            return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACServiceCallView(HomeAssistantView):
+    """View to handle service calls for dashboard."""
+    
+    url = "/api/rbac/service-call"
+    name = "api:rbac:service-call"
+    requires_auth = False
+    
+    def __init__(self, hass: HomeAssistant):
+        """Initialize the service call view."""
+        self.hass = hass
+    
+    async def post(self, request: web.Request) -> web.Response:
+        """Handle service calls."""
+        try:
+            data = await request.json()
+            
+            # Extract service call parameters
+            domain = data.get('domain')
+            service = data.get('service')
+            service_data = data.get('service_data', {})
+            target = data.get('target')
+            
+            if not domain or not service:
+                return self.json({"error": "Missing domain or service"}, status_code=400)
+            
+            # Handle target parameter for services that need it
+            if target:
+                _LOGGER.info(f"Service call: {domain}.{service} with target: {target} and data: {service_data}")
+                await self.hass.services.async_call(domain, service, service_data, target=target)
+            else:
+                # Standard service call
+                _LOGGER.info(f"Service call: {domain}.{service} with data: {service_data}")
+                await self.hass.services.async_call(domain, service, service_data)
+            
+            return self.json({"success": True, "message": f"Service {domain}.{service} called successfully"})
+            
+        except Exception as e:
+            _LOGGER.error(f"Error calling service: {e}")
+            return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACDashboardView(HomeAssistantView):
+    """View to serve guest dashboard."""
+    
+    url = "/api/rbac/dashboard/{user_id}"
+    name = "api:rbac:dashboard"
+    requires_auth = False
+    
+    def __init__(self, hass: HomeAssistant):
+        """Initialize the dashboard view."""
+        self.hass = hass
+        self._www_path = os.path.join(hass.config.config_dir, "custom_components", "rbac", "www")
+        self._dashboards_path = os.path.join(self._www_path, "dashboards")
+    
+    async def get(self, request: web.Request, user_id: str) -> web.Response:
+        """Serve dashboard page or dashboard data."""
+        try:
+            # Security: prevent directory traversal
+            if ".." in user_id or "/" in user_id:
+                return web.Response(status=403, text="Forbidden")
+            
+            # Check if requesting dashboard.html or dashboard data
+            if request.query.get('format') == 'html':
+                # Serve the dashboard.html page
+                dashboard_html_path = os.path.join(self._www_path, "dashboard.html")
+                
+                if not os.path.exists(dashboard_html_path):
+                    return web.Response(status=404, text="Dashboard page not found")
+                
+                with open(dashboard_html_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                return web.Response(
+                    text=content,
+                    content_type="text/html",
+                    headers={"Cache-Control": "no-cache"}
+                )
+            else:
+                # Serve dashboard data (YAML)
+                dashboard_yml_path = os.path.join(self._dashboards_path, user_id, "dashboard.yml")
+                
+                if not os.path.exists(dashboard_yml_path):
+                    # Return empty dashboard if file doesn't exist
+                    dashboard_data = {"cards": []}
+                else:
+                    with open(dashboard_yml_path, 'r', encoding='utf-8') as f:
+                        dashboard_data = yaml.safe_load(f) or {"cards": []}
+                
+                return self.json(dashboard_data)
+                
+        except Exception as e:
+            _LOGGER.error(f"Error serving dashboard for user {user_id}: {e}")
+            return self.json({"error": str(e)}, status_code=500)

@@ -11,9 +11,10 @@ import {
   Button,
   Divider,
   Tooltip,
-  Popconfirm
+  Popconfirm,
+  Switch
 } from 'antd';
-import { EditOutlined, UserAddOutlined, CloseOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
+import { EditOutlined, UserAddOutlined, CloseOutlined, PlusOutlined, LinkOutlined, CheckOutlined } from '@ant-design/icons';
 import { RoleEditModal } from './RoleEditModal';
 import { GuestUserModal } from './GuestUserModal';
 import { DashboardLinkModal } from './DashboardLinkModal';
@@ -211,6 +212,42 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
     setSelectedGuestUser(null);
   };
 
+  const handleToggleGuestUser = async (guestId, guestName, isEnabled) => {
+    setLoading(true);
+    try {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'toggle_guest_user',
+          guestId: guestId,
+          enabled: isEnabled
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle guest user');
+      }
+
+      // Update local data to reflect the new enabled state
+      const updatedUsers = (data.users || []).map(user => 
+        user.id === guestId ? { ...user, enabled: isEnabled } : user
+      );
+
+      onDataChange({
+        ...data,
+        users: updatedUsers
+      });
+
+      const action = isEnabled ? 'enabled' : 'disabled';
+      onSuccess(`Guest user "${guestName}" ${action} successfully!`);
+    } catch (error) {
+      console.error('Error toggling guest user:', error);
+      onError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div>
       <style>
@@ -305,6 +342,27 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
                         }}
                       />
                     </Popconfirm>
+                  )}
+
+                  {/* Enable/Disable Toggle Switch */}
+                  {user.isGuest && (
+                    <Tooltip title={user.enabled !== false ? "Disable guest user" : "Enable guest user"}>
+                      <Switch
+                        checked={user.enabled !== false}
+                        onChange={(checked) => handleToggleGuestUser(user.id, user.name, checked)}
+                        disabled={loading}
+                        checkedChildren="✓"
+                        unCheckedChildren="✗"
+                        size="small"
+                        style={{
+                          position: 'absolute',
+                          top: '12px',
+                          right: '72px',
+                          zIndex: 2,
+                          backgroundColor: user.enabled !== false ? '#52c41a' : '#ff4d4f'
+                        }}
+                      />
+                    </Tooltip>
                   )}
 
                   {/* Dashboard Link Button - Left of X button */}
