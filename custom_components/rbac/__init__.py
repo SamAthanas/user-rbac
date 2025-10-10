@@ -5,16 +5,11 @@ from typing import Any, Dict, Optional
 from datetime import datetime
 
 import yaml
-import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
-from homeassistant.helpers.entity import Entity
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import Platform
 from homeassistant.helpers.template import Template
 import homeassistant.helpers.config_validation as cv
 
@@ -423,88 +418,8 @@ def _patch_service_registry(hass: HomeAssistant):
     
     _patch_service_list(hass)
     
-    _patch_search(hass)
-    
 
 
-
-
-def _is_entity_restricted_for_user(entity_id: str, user_id: str, hass: HomeAssistant) -> bool:
-    """Check if an entity is restricted for a specific user."""
-    _LOGGER.warning(f"Checking if entity {entity_id} is restricted for user {user_id}")
-    
-    if DOMAIN not in hass.data:
-        _LOGGER.debug(f"RBAC domain not in hass.data for entity {entity_id}")
-        return False
-    
-    access_config = hass.data[DOMAIN].get("access_config", {})
-    _LOGGER.warning(f"Access config loaded for entity {entity_id}: {bool(access_config)}")
-    
-    users = access_config.get("users", {})
-    user_config = users.get(user_id)
-    _LOGGER.warning(f"User {user_id} config found: {bool(user_config)}")
-    
-    if not user_config:
-        _LOGGER.warning(f"User {user_id} not in config, checking default restrictions for {entity_id}")
-        default_restrictions = access_config.get("default_restrictions", {})
-        _LOGGER.debug(f"Default restrictions: {default_restrictions}")
-        if default_restrictions and isinstance(default_restrictions, dict):
-            domain = entity_id.split('.')[0]
-            default_domains = default_restrictions.get("domains", {})
-            _LOGGER.debug(f"Default domains: {default_domains}")
-            if default_domains and isinstance(default_domains, dict):
-                _LOGGER.debug(f"Checking domain {domain} in default restrictions: {domain in default_domains}")
-                if domain in default_domains:
-                    domain_config = default_domains[domain]
-                    hide_domain = domain_config.get("hide", False)
-                    _LOGGER.debug(f"Domain {domain} hide setting: {hide_domain}")
-                    if hide_domain:
-                        _LOGGER.debug(f"Entity {entity_id} is hidden by default domain restriction for {domain}")
-                        return True
-                else:
-                    _LOGGER.debug(f"Domain {domain} not found in default restrictions")
-            
-            default_entities = default_restrictions.get("entities", {})
-            if default_entities is None:
-                default_entities = {}
-            if default_entities and isinstance(default_entities, dict):
-                _LOGGER.debug(f"Checking entity {entity_id} in default entities: {entity_id in default_entities}")
-                if entity_id in default_entities:
-                    entity_config = default_entities[entity_id]
-                    hide_entity = entity_config.get("hide", False)
-                    _LOGGER.debug(f"Entity {entity_id} hide setting: {hide_entity}")
-                    if hide_entity:
-                        _LOGGER.warning(f"Entity {entity_id} is hidden by default entity restriction")
-                        return True
-        _LOGGER.warning(f"No default restrictions found for entity {entity_id}")
-        return False
-    
-    restrictions = user_config.get("restrictions", {})
-    _LOGGER.warning(f"User {user_id} restrictions: {bool(restrictions)}")
-    
-    domain = entity_id.split('.')[0]
-    domains = restrictions.get("domains", {})
-    _LOGGER.debug(f"Checking domain {domain} in user restrictions: {domain in domains}")
-    if domain in domains:
-        domain_config = domains[domain]
-        hide_domain = domain_config.get("hide", False)
-        _LOGGER.debug(f"User domain {domain} hide setting: {hide_domain}")
-        if hide_domain:
-            _LOGGER.warning(f"Entity {entity_id} is hidden by user domain restriction for {domain}")
-            return True
-    
-    entities = restrictions.get("entities", {})
-    _LOGGER.debug(f"Checking entity {entity_id} in user entities: {entity_id in entities}")
-    if entity_id in entities:
-        entity_config = entities[entity_id]
-        hide_entity = entity_config.get("hide", False)
-        _LOGGER.debug(f"User entity {entity_id} hide setting: {hide_entity}")
-        if hide_entity:
-            _LOGGER.warning(f"Entity {entity_id} is hidden by user entity restriction")
-            return True
-    
-    _LOGGER.debug(f"Entity {entity_id} is NOT restricted for user {user_id}")
-    return False
 
 
 def _patch_service_list(hass: HomeAssistant):
@@ -589,62 +504,6 @@ def _patch_service_list(hass: HomeAssistant):
                 return self._original.async_services()
     
     hass.services = FilteredServiceRegistry(original_registry, hass)
-
-
-def _patch_search(hass: HomeAssistant):
-    """Patch the search functionality to filter restricted entities."""
-    try:
-        # Try to patch the search component if it exists
-        if hasattr(hass, 'components') and hasattr(hass.components, 'search'):
-            original_search = hass.components.search
-            
-            class FilteredSearch:
-                def __init__(self, original_search, hass):
-                    self._original = original_search
-                    self._hass = hass
-                    
-                def __getattr__(self, name):
-                    return getattr(self._original, name)
-                
-                async def async_search(self, query, context=None):
-                    """Filter search results to exclude restricted entities."""
-                    try:
-                        user_id = None
-                        if context and hasattr(context, 'user_id') and context.user_id:
-                            user_id = context.user_id
-                        
-                        if not user_id:
-                            return await self._original.async_search(query, context)
-                        
-                        results = await self._original.async_search(query, context)
-                        
-                        hide_blocked_entities = False
-                        
-                        if hide_blocked_entities:
-                            filtered_results = []
-                            for result in results:
-                                if hasattr(result, 'entity_id'):
-                                    if not _is_entity_restricted_for_user(result.entity_id, user_id, self._hass):
-                                        filtered_results.append(result)
-                                    else:
-                                        _LOGGER.debug(f"Filtering out restricted entity {result.entity_id} from search results for user {user_id}")
-                                else:
-                                    filtered_results.append(result)
-                            return filtered_results
-                        else:
-                            return results
-                            
-                    except Exception as e:
-                        _LOGGER.warning(f"RBAC error in search: {e}. Showing all search results to prevent lockout.")
-                        _LOGGER.debug(f"RBAC error details: {e}", exc_info=True)
-                        return await self._original.async_search(query, context)
-            
-            hass.components.search = FilteredSearch(original_search, hass)
-            _LOGGER.debug("Patched search component to filter restricted entities")
-    except Exception as e:
-        _LOGGER.debug(f"Could not patch search component: {e}")
-
-
 
 
 def _is_service_restricted_for_user(domain: str, service: str, user_id: str, hass: HomeAssistant) -> bool:
@@ -1118,12 +977,6 @@ def _check_entity_access_with_reason(entity_id: str, service: str, user_config: 
     return True, f"entity {entity_id} allowed"
 
 
-def _check_entity_access(entity_id: str, service: str, user_config: Dict[str, Any]) -> bool:
-    """Check if user has access to a specific entity service."""
-    result, _ = _check_entity_access_with_reason(entity_id, service, user_config)
-    return result
-
-
 def _check_domain_access_with_reason(domain: str, service: str, user_config: Dict[str, Any]) -> tuple[bool, str]:
     """Check if user has access to a domain service with detailed reason."""
     if not user_config:
@@ -1153,14 +1006,6 @@ def _check_domain_access_with_reason(domain: str, service: str, user_config: Dic
     return True, f"domain {domain} allowed"
 
 
-def _check_domain_access(domain: str, service: str, user_config: Dict[str, Any]) -> bool:
-    """Check if user has access to a domain service."""
-    result, _ = _check_domain_access_with_reason(domain, service, user_config)
-    return result
-
-
-
-
 def _check_restriction_access_with_reason(
     domain: str,
     service: str,
@@ -1183,17 +1028,6 @@ def _check_restriction_access_with_reason(
     return False, f"service {domain}.{service} allowed"
 
 
-def _check_restriction_access(
-    domain: str,
-    service: str,
-    service_data: Optional[Dict[str, Any]],
-    user_config: Dict[str, Any]
-) -> bool:
-    """Check if service is in user's restrictions."""
-    result, _ = _check_restriction_access_with_reason(domain, service, service_data, user_config)
-    return result
-
-
 def get_user_config(hass: HomeAssistant, user_id: str) -> Optional[Dict[str, Any]]:
     """Get the configuration for a specific user."""
     if DOMAIN not in hass.data:
@@ -1214,6 +1048,28 @@ async def reload_access_config(hass: HomeAssistant) -> bool:
     except Exception as e:
         _LOGGER.error(f"Failed to reload access control configuration: {e}")
         return False
+
+
+def _is_top_level_user(hass: HomeAssistant, user_id: str) -> bool:
+    """Check if user has top-level access (admin or super_admin role)."""
+    if DOMAIN not in hass.data:
+        return False
+    
+    access_config = hass.data[DOMAIN].get("access_config", {})
+    users = access_config.get("users", {})
+    user_config = users.get(user_id)
+    
+    if not user_config:
+        try:
+            user = hass.auth.async_get_user(user_id)
+            if user and user.is_admin:
+                return True
+        except Exception:
+            pass
+        return False
+    
+    role = user_config.get("role", "")
+    return role in ["admin", "super_admin"]
 
 
 async def _save_access_control_config(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
@@ -1351,28 +1207,6 @@ async def _register_sidebar_panel(hass: HomeAssistant):
         _LOGGER.info("RBAC panel registration scheduled for when frontend is ready")
     except Exception as e:
         _LOGGER.warning(f"Could not schedule RBAC panel registration: {e}. Users will need to access the config page manually at /api/rbac/static/config.html")
-
-
-def _is_top_level_user(hass: HomeAssistant, user_id: str) -> bool:
-    """Check if user has top-level access (admin or super_admin role)."""
-    if DOMAIN not in hass.data:
-        return False
-    
-    access_config = hass.data[DOMAIN].get("access_config", {})
-    users = access_config.get("users", {})
-    user_config = users.get(user_id)
-    
-    if not user_config:
-        try:
-            user = hass.auth.async_get_user(user_id)
-            if user and user.is_admin:
-                return True
-        except Exception:
-            pass
-        return False
-    
-    role = user_config.get("role", "")
-    return role in ["admin", "super_admin"]
 
 
 async def add_user_access(hass: HomeAssistant, user_id: str, role: str) -> bool:
