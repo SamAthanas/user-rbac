@@ -32,12 +32,11 @@ _LOGGER = logging.getLogger(__name__)
 def _get_available_roles(hass: HomeAssistant) -> list:
     """Get available roles from access control configuration."""
     if DOMAIN not in hass.data:
-        return ["guest", "user", "admin", "super_admin"]  # Default roles
+        return ["guest", "user", "admin", "super_admin"]
     
     access_config = hass.data[DOMAIN].get("access_config", {})
     roles = list(access_config.get("roles", {}).keys())
     
-    # If no roles defined, use default roles
     if not roles:
         roles = ["guest", "user", "admin", "super_admin"]
     
@@ -57,7 +56,6 @@ RELOAD_CONFIG_SCHEMA = vol.Schema({})
 
 LIST_USERS_SCHEMA = vol.Schema({})
 
-# User management schemas (restricted to top-level users)
 ADD_USER_SCHEMA = vol.Schema({
     vol.Required("person"): cv.string,
     vol.Required("role"): cv.string,
@@ -73,7 +71,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Handle the get_user_config service call."""
         person_entity_id = call.data.get("person", "")
         
-        # Extract user_id from person entity
         try:
             person_state = hass.states.get(person_entity_id)
             if not person_state:
@@ -105,7 +102,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": f"User '{user_id}' not found in configuration (has full access)"
             }
         
-        # Fire event with the data
         hass.bus.async_fire("rbac_service_response", {
             "service": "get_user_config",
             "data": response_data
@@ -115,7 +111,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_reload_config(call: ServiceCall) -> Dict[str, Any]:
         """Handle the reload_config service call."""
-        # Check if caller has top-level access
         caller_id = call.context.user_id if call.context else None
         if not caller_id or not _is_top_level_user(hass, caller_id):
             _LOGGER.warning(f"Access denied: User {caller_id} attempted to reload config")
@@ -181,7 +176,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         person_entity_id = call.data.get("person", "")
         role = call.data.get("role", "")
         
-        # Validate role
         if not role:
             raise HomeAssistantError("Role is required")
         
@@ -189,7 +183,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             available_roles = _get_available_roles(hass)
             raise HomeAssistantError(f"Invalid role '{role}'. Available roles: {', '.join(available_roles)}")
         
-        # Extract user_id from person entity
         try:
             person_state = hass.states.get(person_entity_id)
             if not person_state:
@@ -213,7 +206,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": f"Error extracting user_id from person {person_entity_id}: {e}"
             }
         
-        # Check if caller has top-level access
         caller_id = call.context.user_id if call.context else None
         if not caller_id or not _is_top_level_user(hass, caller_id):
             _LOGGER.warning(f"Access denied: User {caller_id} attempted to add user {user_id}")
@@ -222,7 +214,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": "Access denied: Only admin users can add users"
             }
         
-        # Check if user is a built-in HA user
         if _is_builtin_ha_user(user_id):
             _LOGGER.warning(f"Cannot add built-in Home Assistant user: {user_id}")
             return {

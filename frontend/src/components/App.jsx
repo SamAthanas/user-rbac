@@ -121,10 +121,7 @@ export function App() {
       } else {
         setLoading(true);
       }
-      console.log('Starting to load data...');
-
       const auth = await getHAAuth();
-      console.log('Auth result:', auth);
       
       if (!auth) {
         setIsAuthenticated(false);
@@ -143,7 +140,6 @@ export function App() {
         setSensors(sensorsData);
       }
 
-      console.log('Making API calls...');
       const [usersRes, domainsRes, entitiesRes, servicesRes, configRes] = await Promise.all([
         makeAuthenticatedRequest('/api/rbac/users'),
         makeAuthenticatedRequest('/api/rbac/domains'),
@@ -151,8 +147,6 @@ export function App() {
         makeAuthenticatedRequest('/api/rbac/services'),
         makeAuthenticatedRequest('/api/rbac/config')
       ]);
-
-      console.log('API responses:', { usersRes, domainsRes, entitiesRes, servicesRes, configRes });
 
       // Check for admin access denied (403)
       if (usersRes.status === 403 || domainsRes.status === 403 || entitiesRes.status === 403 || 
@@ -201,7 +195,6 @@ export function App() {
         configRes.json()
       ]);
 
-      console.log('Loaded data:', { users, domains, entities, services, config });
       setData({ users, domains, entities, services, config });
       setIntegrationConfigured(true);
       
@@ -343,7 +336,6 @@ export function App() {
       
       if (response.ok) {
         const userData = await response.json();
-        console.log('Current user data received:', userData);
         return userData;
       }
       return null;
