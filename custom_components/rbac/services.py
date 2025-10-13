@@ -547,14 +547,22 @@ class RBACConfigView(HomeAssistantView):
                     access_config["users"][user_id] = {}
                 access_config["users"][user_id]["role"] = role_name
                 
-            elif action == "update_default_restrictions":
-                restrictions = data.get("restrictions")
+            elif action == "update_default_role":
+                default_role = data.get("default_role")
                 
-                if not restrictions:
-                    return self.json({"error": "Missing restrictions"}, status_code=400)
+                if default_role is None:
+                    return self.json({"error": "Missing default_role"}, status_code=400)
                 
-                # Update default restrictions
-                access_config["default_restrictions"] = restrictions
+                if default_role == "none":
+                    default_role = ""
+                
+                # Validate the default role
+                if default_role and not _validate_role(hass, default_role):
+                    available_roles = _get_available_roles(hass)
+                    return self.json({"error": f"Invalid default role '{default_role}'. Available roles: {', '.join(available_roles)}"}, status_code=400)
+                
+                # Update default role
+                access_config["default_role"] = default_role
                 
             elif action == "update_settings":
                 # Update enabled, show_notifications, send_event, frontend_blocking_enabled, log_deny_list settings
@@ -1142,11 +1150,6 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     "allowed_entities": allowed_entities
                 })
             
-            # Get default restrictions
-            default_restrictions = access_config.get("default_restrictions", {})
-            default_domains = default_restrictions.get("domains", {})
-            default_entities = default_restrictions.get("entities", {})
-            
             # Get role-specific permissions
             role_permissions = role_config.get("permissions", {})
             role_domains = role_permissions.get("domains", {})
@@ -1221,23 +1224,6 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     else:
                         domain_blocked = True  # Non-dict means block all
                 
-                # Check default restrictions (lowest priority)
-                elif domain in default_domains:
-                    default_domain_config = default_domains[domain]
-                    if isinstance(default_domain_config, dict):
-                        default_services = default_domain_config.get("services", [])
-                        domain_allowed = default_domain_config.get("allow", False)
-                        if domain_allowed:
-                            # Default explicitly allows this domain
-                            allowed_domains.append(domain)
-                            continue
-                        if not default_services:  # Empty list means block all
-                            domain_blocked = True
-                        else:
-                            domain_services = default_services
-                    else:
-                        domain_blocked = True  # Non-dict means block all
-                
                 # If no explicit configuration found, apply role's default behavior
                 else:
                     if not role_allows_by_default:
@@ -1289,23 +1275,6 @@ class RBACFrontendBlockingView(HomeAssistantView):
                             entity_blocked = True
                         else:
                             entity_services = role_services
-                    else:
-                        entity_blocked = True  # Non-dict means block all
-                
-                # Check default restrictions (lowest priority)
-                elif entity in default_entities:
-                    default_entity_config = default_entities[entity]
-                    if isinstance(default_entity_config, dict):
-                        default_services = default_entity_config.get("services", [])
-                        entity_allowed = default_entity_config.get("allow", False)
-                        if entity_allowed:
-                            # Default explicitly allows this entity
-                            allowed_entities.append(entity)
-                            continue
-                        if not default_services:  # Empty list means block all
-                            entity_blocked = True
-                        else:
-                            entity_services = default_services
                     else:
                         entity_blocked = True  # Non-dict means block all
                 

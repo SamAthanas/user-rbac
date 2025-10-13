@@ -5,58 +5,82 @@ import {
   Button,
   Space,
   Row,
-  Col
+  Col,
+  Select
 } from 'antd';
-import { AntMultiSelect } from './AntMultiSelect';
+import { EditOutlined } from '@ant-design/icons';
+import { makeAuthenticatedRequest, getHAAuth } from '../utils/auth';
+import { RoleEditModal } from './RoleEditModal';
 
-export function DefaultRestrictions({ data, onSuccess, onError }) {
+export function DefaultRestrictions({ data, onSuccess, onError, onDataChange }) {
   const [loading, setLoading] = useState(false);
-  const [restrictions, setRestrictions] = useState({
-    domains: [],
-    entities: []
-  });
+  const [defaultRole, setDefaultRole] = useState('none');
+  const [editingRole, setEditingRole] = useState(null);
+  const [editingRoleData, setEditingRoleData] = useState(null);
 
-  // Initialize restrictions from config
+  // Initialize default role from config
   useEffect(() => {
-    if (data.config?.default_restrictions) {
-      const defaultRestrictions = data.config.default_restrictions;
-      setRestrictions({
-        domains: Object.keys(defaultRestrictions.domains || {}),
-        entities: Object.keys(defaultRestrictions.entities || {})
-      });
+    if (data.config?.default_role !== undefined) {
+      setDefaultRole(data.config.default_role || 'none');
     }
   }, [data.config]);
 
   const handleSave = async () => {
     setLoading(true);
     try {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'update_default_role',
+          default_role: defaultRole
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save default role');
+      }
+
+      onSuccess('Default role saved successfully!');
+    } catch (error) {
+      console.error('Error saving default role:', error);
+      onError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAvailableRoles = () => {
+    const roles = Object.keys(data.config?.roles || {});
+    // Add default roles if they don't exist
+    if (!roles.includes('admin')) roles.unshift('admin');
+    if (!roles.includes('user')) roles.push('user');
+    if (!roles.includes('guest')) roles.push('guest');
+    roles.unshift('none');
+    return roles;
+  };
+
+  const handleEditRole = () => {
+    if (defaultRole && defaultRole !== 'none') {
+      const role = data.config?.roles?.[defaultRole];
+      if (role) {
+        setEditingRole(defaultRole);
+        setEditingRoleData(role);
+      }
+    }
+  };
+
+  const closeRoleModal = () => {
+    setEditingRole(null);
+    setEditingRoleData(null);
+  };
+
+  const handleSaveRole = async (saveData) => {
+    setLoading(true);
+    try {
       const auth = await getHAAuth();
       if (!auth) {
         throw new Error('Not authenticated with Home Assistant');
       }
-
-      // Convert restrictions to the expected format
-      const defaultRestrictions = {
-        domains: {},
-        entities: {},
-        services: {}
-      };
-
-      // Add domain restrictions
-      restrictions.domains.forEach(domain => {
-        defaultRestrictions.domains[domain] = {
-          hide: true,
-          services: []
-        };
-      });
-
-      // Add entity restrictions
-      restrictions.entities.forEach(entity => {
-        defaultRestrictions.entities[entity] = {
-          hide: true,
-          services: []
-        };
-      });
 
       const response = await fetch('/api/rbac/config', {
         method: 'POST',
@@ -65,104 +89,75 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          action: 'update_default_restrictions',
-          restrictions: defaultRestrictions
+          action: 'update_role',
+          roleName: saveData.roleName,
+          roleData: saveData.roleData
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save default restrictions');
+        throw new Error('Failed to save role');
       }
 
-      onSuccess('Default restrictions saved successfully!');
+      // Update local data
+      const updatedConfig = { ...data.config };
+      if (!updatedConfig.roles) {
+        updatedConfig.roles = {};
+      }
+      updatedConfig.roles[saveData.roleName] = saveData.roleData;
+      
+      onDataChange({
+        ...data,
+        config: updatedConfig
+      });
+
+      closeRoleModal();
+      onSuccess(`Role "${saveData.roleName}" updated successfully!`);
     } catch (error) {
-      console.error('Error saving default restrictions:', error);
+      console.error('Error saving role:', error);
       onError(error.message);
     } finally {
       setLoading(false);
     }
   };
-
-  const getHAAuth = async () => {
-    try {
-      // Try to get hass object from Home Assistant context
-      const hass = getHassObject();
-      if (hass && hass.auth) {
-        if (hass.auth.data && hass.auth.data.access_token) {
-          return {
-            access_token: hass.auth.data.access_token,
-            token_type: 'Bearer'
-          };
-        }
-        if (hass.auth.access_token) {
-          return {
-            access_token: hass.auth.access_token,
-            token_type: 'Bearer'
-          };
-        }
-      }
-      
-      // Try localStorage/sessionStorage
-      const auth = localStorage.getItem('hassTokens') || sessionStorage.getItem('hassTokens');
-      if (auth) {
-        const tokens = JSON.parse(auth);
-        return {
-          access_token: tokens.access_token,
-          token_type: 'Bearer'
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Auth error:', error);
-      return null;
-    }
-  };
-
-  const getHassObject = () => {
-    try {
-      const homeAssistantElement = document.querySelector("home-assistant");
-      if (homeAssistantElement && homeAssistantElement.hass) {
-        return homeAssistantElement.hass;
-      }
-      if (window.hass) {
-        return window.hass;
-      }
-      if (window.parent && window.parent !== window && window.parent.hass) {
-        return window.parent.hass;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting hass object:', error);
-      return null;
-    }
-  };
-
   return (
     <div>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
-        Configure global restrictions applied to all users.
+        Configure the default role that will be applied to users who have no specific role assigned or have the "Default" role assigned.
       </Typography.Paragraph>
       
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} md={12}>
-          <AntMultiSelect
-            options={data.domains || []}
-            selectedValues={restrictions.domains}
-            onSelectionChange={(domains) => setRestrictions(prev => ({ ...prev, domains }))}
-            placeholder="Select domains to restrict..."
-            disabled={loading}
-          />
-        </Col>
-        
-        <Col xs={24} md={12}>
-          <AntMultiSelect
-            options={data.entities || []}
-            selectedValues={restrictions.entities}
-            onSelectionChange={(entities) => setRestrictions(prev => ({ ...prev, entities }))}
-            placeholder="Select entities to restrict..."
-            disabled={loading}
-          />
+          <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+            Default Role
+          </Typography.Text>
+          <Space.Compact style={{ width: '100%' }}>
+            <Select
+              value={defaultRole}
+              onChange={setDefaultRole}
+              placeholder="Select default role (None = no restrictions)"
+              style={{ flex: 1 }}
+              allowClear
+              disabled={loading}
+            >
+              {getAvailableRoles().map(role => (
+                <Select.Option key={role} value={role}>
+                  {role === 'none' ? 'None' : role.charAt(0).toUpperCase() + role.slice(1)}
+                </Select.Option>
+              ))}
+            </Select>
+            {defaultRole && defaultRole !== 'none' && (
+              <Button
+                icon={<EditOutlined />}
+                onClick={handleEditRole}
+                disabled={loading}
+                title={`Edit ${defaultRole.charAt(0).toUpperCase() + defaultRole.slice(1)} role`}
+              />
+            )}
+          </Space.Compact>
+          <Typography.Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 4 }}>
+            Users without a specific role or with "Default" role will use this role's permissions. Select "None" to allow all access by default.
+          </Typography.Text>
         </Col>
       </Row>
       
@@ -174,9 +169,22 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
           loading={loading}
           size="large"
         >
-          Save Default Restrictions
+          Save Default Role
         </Button>
       </Space>
+
+      {/* Role Edit Modal */}
+      <RoleEditModal
+        visible={!!editingRole}
+        onCancel={closeRoleModal}
+        onSave={handleSaveRole}
+        roleName={editingRole}
+        roleConfig={editingRoleData}
+        availableRoles={Object.keys(data.config?.roles || {})}
+        domains={data.domains}
+        entities={data.entities}
+        services={data.services}
+      />
     </div>
   );
 }

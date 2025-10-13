@@ -106,6 +106,8 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
     if (!roles.includes('admin')) roles.unshift('admin');
     if (!roles.includes('user')) roles.push('user');
     if (!roles.includes('guest')) roles.push('guest');
+    // Add "Default" option
+    roles.unshift('default');
     return roles;
   };
 
@@ -211,7 +213,7 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
                     >
                       {getAvailableRoles().map(role => (
                         <Select.Option key={role} value={role}>
-                          {role.charAt(0).toUpperCase() + role.slice(1)}
+                          {role === 'default' ? 'Default' : role.charAt(0).toUpperCase() + role.slice(1)}
                         </Select.Option>
                       ))}
                     </Select>

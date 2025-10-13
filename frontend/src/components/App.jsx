@@ -1054,6 +1054,7 @@ export function App() {
                 data={data} 
                 onSuccess={showSuccess}
                 onError={showError}
+                onDataChange={setData}
               />
             </Collapse.Panel>
             

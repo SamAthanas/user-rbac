@@ -3,6 +3,7 @@ import { Modal, Form, Input, Button, Space, Row, Col, Select, InputNumber, Switc
 import { PlusOutlined, DeleteOutlined, CheckOutlined, CloseOutlined, ExclamationOutlined, ToolOutlined, CodeOutlined, DownOutlined } from '@ant-design/icons';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
+import { getHAAuth } from '../utils/auth';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -277,32 +278,6 @@ export function RoleEditModal({
 
   const getServicesForEntity = (entity) => {
     return services.entities?.[entity] || [];
-  };
-
-  const getHAAuth = async () => {
-    try {
-      const homeAssistantElement = document.querySelector("home-assistant");
-      if (homeAssistantElement && homeAssistantElement.hass) {
-        const hass = homeAssistantElement.hass;
-        if (hass.auth?.data?.access_token) {
-          return { access_token: hass.auth.data.access_token };
-        }
-        if (hass.auth?.access_token) {
-          return { access_token: hass.auth.access_token };
-        }
-      }
-      
-      const auth = localStorage.getItem('hassTokens') || sessionStorage.getItem('hassTokens');
-      if (auth) {
-        const tokens = JSON.parse(auth);
-        return { access_token: tokens.access_token };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Auth error:', error);
-      return null;
-    }
   };
 
   const handleOpenHAEditor = () => {
