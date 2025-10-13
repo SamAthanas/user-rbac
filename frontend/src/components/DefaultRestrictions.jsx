@@ -25,14 +25,17 @@ export function DefaultRestrictions({ data, onSuccess, onError, onDataChange }) 
     }
   }, [data.config]);
 
-  const handleSave = async () => {
+  const handleRoleChange = async (newRole) => {
+    // Handle clear button (X) - convert undefined to 'none'
+    const roleToSave = newRole === undefined ? 'none' : newRole;
+    
     setLoading(true);
     try {
       const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
         body: JSON.stringify({
           action: 'update_default_role',
-          default_role: defaultRole
+          default_role: roleToSave
         })
       });
 
@@ -40,6 +43,7 @@ export function DefaultRestrictions({ data, onSuccess, onError, onDataChange }) 
         throw new Error('Failed to save default role');
       }
 
+      setDefaultRole(roleToSave);
       onSuccess('Default role saved successfully!');
     } catch (error) {
       console.error('Error saving default role:', error);
@@ -134,7 +138,7 @@ export function DefaultRestrictions({ data, onSuccess, onError, onDataChange }) 
           <Space.Compact style={{ width: '100%' }}>
             <Select
               value={defaultRole}
-              onChange={setDefaultRole}
+              onChange={handleRoleChange}
               placeholder="Select default role (None = no restrictions)"
               style={{ flex: 1 }}
               allowClear
@@ -156,22 +160,10 @@ export function DefaultRestrictions({ data, onSuccess, onError, onDataChange }) 
             )}
           </Space.Compact>
           <Typography.Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 4 }}>
-            Users without a specific role or with "Default" role will use this role's permissions. Select "None" to allow all access by default.
+            Select Default Role to be used
           </Typography.Text>
         </Col>
       </Row>
-      
-      <Space style={{ justifyContent: 'flex-end', display: 'flex', width: '100%', marginTop: 24 }}>
-        <Button
-          type="primary"
-          onClick={handleSave}
-          disabled={loading}
-          loading={loading}
-          size="large"
-        >
-          Save Default Role
-        </Button>
-      </Space>
 
       {/* Role Edit Modal */}
       <RoleEditModal
