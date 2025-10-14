@@ -656,6 +656,8 @@ def _check_service_access_with_reason(
     deny_all = role_config.get("deny_all", False)
     
     permissions = role_config.get("permissions", {})
+    if not permissions:
+        permissions = role_config
     if service_data and "entity_id" in service_data:
         entity_id = service_data["entity_id"]
         if isinstance(entity_id, list):
@@ -711,8 +713,6 @@ def _check_service_access_with_reason(
         role_services = role_config.get("services", [])
         role_allow = role_config.get("allow", False)
         
-        _LOGGER.warning(f"Found domain {domain} in role permissions: allow={role_allow}, services={role_services}")
-        
         if role_allow:
             if not role_services or service in role_services:
                 return True, f"domain {domain} service {service} allowed by role {user_role}"
@@ -725,6 +725,25 @@ def _check_service_access_with_reason(
                 return False, f"service {domain}.{service} blocked by role {user_role}"
     
     if deny_all and not ((domain == "system_log" and service == "write") or (domain == "browser_mod" and service == "notification")):
+        if domain in role_domains:
+            role_config = role_domains[domain]
+            role_allow = role_config.get("allow", False)
+            if role_allow:
+                role_services = role_config.get("services", [])
+                if not role_services or service in role_services:
+                    return True, f"domain {domain} service {service} allowed by role domain permissions (overrides deny_all)"
+        
+        if domain == "homeassistant" and service_data and "entity_id" in service_data:
+            entity_id = service_data["entity_id"]
+            if isinstance(entity_id, str):
+                entity_domain = entity_id.split('.')[0]
+                if entity_domain in role_domains:
+                    entity_domain_config = role_domains[entity_domain]
+                    if entity_domain_config.get("allow", False):
+                        entity_domain_services = entity_domain_config.get("services", [])
+                        if not entity_domain_services or service in entity_domain_services:
+                            return True, f"homeassistant service {service} allowed by entity domain {entity_domain} permissions"
+
         entity_ids = []
         
         if service_data and "entity_id" in service_data:
