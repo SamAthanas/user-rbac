@@ -56,7 +56,10 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "default_role": "",
                 "users": {},
                 "roles": {
-                    "admin": {"description": "Administrator with most permissions"},
+                    "admin": {
+                        "description": "Administrator with most permissions",
+                        "admin": True
+                    },
                     "user": {"description": "Standard user with limited permissions"},
                     "guest": {"description": "Guest with minimal permissions"}
                 }
