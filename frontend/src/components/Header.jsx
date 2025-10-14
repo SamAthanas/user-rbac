@@ -15,22 +15,17 @@ export function Header({ currentUser = null, isDarkMode = false, onThemeToggle }
   };
 
   const getUserPicture = (user) => {
-    console.log('Header getUserPicture called with user:', user);
-    
     // Use the entity_picture from the person entity if available
     if (user?.entity_picture) {
-      console.log('Using entity_picture:', user.entity_picture);
       return user.entity_picture;
     }
     
     // Fallback: construct URL from user ID (for backwards compatibility)
     if (user?.id) {
       const fallbackUrl = `/api/image/serve/${user.id}/512x512`;
-      console.log('Using fallback URL:', fallbackUrl);
       return fallbackUrl;
     }
     
-    console.log('No picture available for user');
     return null;
   };
 
