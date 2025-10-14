@@ -81,21 +81,12 @@ export function DefaultRestrictions({ data, onSuccess, onError, onDataChange }) 
   const handleSaveRole = async (saveData) => {
     setLoading(true);
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           action: 'update_role',
           roleName: saveData.roleName,
-          roleData: saveData.roleData
+          roleConfig: saveData.roleData
         })
       });
 
