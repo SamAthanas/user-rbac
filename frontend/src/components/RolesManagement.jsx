@@ -12,6 +12,7 @@ import {
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, CodeOutlined } from '@ant-design/icons';
 import { RoleEditModal } from './RoleEditModal';
+import { getHAAuth, makeAuthenticatedRequest } from '../utils/auth';
 
 export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
   const [loading, setLoading] = useState(false);
@@ -27,59 +28,6 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
     }
   }, [data.config]);
 
-  const getHAAuth = async () => {
-    try {
-      const hass = getHassObject();
-      if (hass && hass.auth) {
-        if (hass.auth.data && hass.auth.data.access_token) {
-          return {
-            access_token: hass.auth.data.access_token,
-            token_type: 'Bearer'
-          };
-        }
-        if (hass.auth.access_token) {
-          return {
-            access_token: hass.auth.access_token,
-            token_type: 'Bearer'
-          };
-        }
-      }
-      
-      const auth = localStorage.getItem('hassTokens') || sessionStorage.getItem('hassTokens');
-      if (auth) {
-        const tokens = JSON.parse(auth);
-        return {
-          access_token: tokens.access_token,
-          token_type: 'Bearer'
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Auth error:', error);
-      return null;
-    }
-  };
-
-  const getHassObject = () => {
-    try {
-      const homeAssistantElement = document.querySelector("home-assistant");
-      if (homeAssistantElement && homeAssistantElement.hass) {
-        return homeAssistantElement.hass;
-      }
-      if (window.hass) {
-        return window.hass;
-      }
-      if (window.parent && window.parent !== window && window.parent.hass) {
-        return window.parent.hass;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting hass object:', error);
-      return null;
-    }
-  };
-
   const handleCreateRole = () => {
     setShowCreateModal(true);
   };
@@ -87,17 +35,8 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
   const handleDeleteRole = async (roleName) => {
     setLoading(true);
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           action: 'delete_role',
           roleName: roleName
@@ -151,21 +90,12 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
   const handleSaveRole = async (saveData) => {
     setLoading(true);
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
       // Extract role name and data
       const { roleName: newRoleName, roleData } = saveData;
       const targetRoleName = newRoleName || editingRole;
 
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           action: 'update_role',
           roleName: targetRoleName,
@@ -204,20 +134,11 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
   const handleCreateRoleSave = async (saveData) => {
     setLoading(true);
     try {
-      const auth = await getHAAuth();
-      if (!auth) {
-        throw new Error('Not authenticated with Home Assistant');
-      }
-
       // Extract role name and data from saveData
       const { roleName, roleData } = saveData;
 
-      const response = await fetch('/api/rbac/config', {
+      const response = await makeAuthenticatedRequest('/api/rbac/config', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           action: 'update_role',
           roleName: roleName,
