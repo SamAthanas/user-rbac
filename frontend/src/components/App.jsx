@@ -900,7 +900,7 @@ export function App() {
                     </Tooltip>
                     {frontendBlocking && (
                       <span style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
-                        Add frontend script to www/community/rbac/rbac.js
+                        Add frontend script to /api/rbac/static/rbac.js
                       </span>
                     )}
                   </div>
