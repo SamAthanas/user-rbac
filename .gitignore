@@ -35,3 +35,17 @@ __pycache__/
 # Temporary files
 *.tmp
 *.temp
+
+# artifacts
+.pytest*
+*.egg-info
+
+# misc
+.coverage
+.vscode
+coverage.xml
+.ruff_cache
+
+# Home Assistant configuration
+config/*
+!config/configuration.yaml
