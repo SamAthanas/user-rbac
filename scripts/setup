@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+python3 -m pip install --requirement requirements.txt
+
+frontend_dir="frontend"
+frontend_source="custom_components/rbac/www"
+frontend_target="config/custom_components/rbac/www"
+
+# Build React frontend
+cd "$frontend_dir"
+npm install
+npm run build
+
+# Copy built files to Home Assistant config directory
+cd ..
+sudo mkdir -p "$frontend_target"
+sudo cp "$frontend_source"/src/index.html "$frontend_target"/config.html
+sudo cp -p "$frontend_source"/config.js "$frontend_target"/
