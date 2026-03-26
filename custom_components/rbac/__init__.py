@@ -373,7 +373,7 @@ def _patch_service_registry(hass: HomeAssistant):
                     _LOGGER.debug(f"Service call allowed (blocking disabled): {domain}.{service} by {user_name}")
                 
                 context_id_added = None
-                if allow_chained_actions and context and (domain == 'script' or domain == 'automation'):
+                if allow_chained_actions and context:
                     if 'allowed_contexts' not in self._hass.data[DOMAIN]:
                         self._hass.data[DOMAIN]['allowed_contexts'] = set()
                     
