@@ -30,6 +30,7 @@ default_restrictions:
       - supervisor_update
       - supervisor_restart
   entities: {}
+  panels: {}
 users: {}
 roles:
   admin:

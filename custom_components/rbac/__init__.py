@@ -1,7 +1,7 @@
 """RBAC Middleware for Home Assistant."""
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 from datetime import datetime
 
 import yaml
@@ -68,7 +68,8 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                             "services": ["host_reboot", "host_shutdown", "supervisor_update", "supervisor_restart"]
                         }
                     },
-                    "entities": {}
+                    "entities": {},
+                    "panels": {}
                 },
                 "users": {},
                 "roles": {
@@ -111,6 +112,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["original_async_call"] = hass.services.async_call
     
     _patch_service_registry(hass)
+    _patch_panel_list(hass)
     
     from . import services
     await services.async_setup_services(hass)
@@ -121,9 +123,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     
     user_count = len(access_config.get("users", {}))
     _LOGGER.info(f"RBAC Middleware initialized successfully with {user_count} configured users")
-    
-    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACDenyLogView, RBACTemplateEvaluateView, RBACFrontendBlockingView, RBACYamlEditorView
-    
+
+    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACPanelsView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACDenyLogView, RBACTemplateEvaluateView, RBACFrontendBlockingView, RBACYamlEditorView
+
     hass.http.register_view(RBACConfigView())
     hass.http.register_view(RBACUsersView())
     hass.http.register_view(RBACDomainsView())
@@ -135,7 +137,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.http.register_view(RBACTemplateEvaluateView())
     hass.http.register_view(RBACFrontendBlockingView())
     hass.http.register_view(RBACYamlEditorView())
-    
+    hass.http.register_view(RBACPanelsView())
+
     _LOGGER.info("Registered RBAC API endpoints")
     
     await _register_sidebar_panel(hass)
@@ -219,6 +222,102 @@ async def _setup_rbac_device(hass: HomeAssistant, config_entry):
     except Exception as e:
         _LOGGER.warning(f"Could not create device/sensors properly: {e}")
 
+def _patch_panel_list(hass: HomeAssistant):
+    from homeassistant.components.websocket_api.const import DOMAIN as WS_DOMAIN
+    from homeassistant.components.websocket_api.connection import ActiveConnection
+    from homeassistant.core import callback
+
+    class RBACFilterPanelActiveConnection:
+        "Wrapper for connection that filer restricted panels"
+
+        __slots__ = [
+            "hass",
+            "original_connection",
+        ]
+
+        def __init__(self, hass: HomeAssistant, connection: ActiveConnection):
+            self.hass = hass
+            self.original_connection = connection
+
+        def __getattr__(self, name):
+            return getattr(self.original_connection, name)
+
+        def _send_filtered_data(
+            self,
+            data: dict[str, Any],
+            deny_all: bool,
+            rbac_include: set[str],
+            rbac_exclude: set[str],
+        ) -> None:
+            panels = data["result"]
+
+            result = {} if deny_all else panels.copy()
+
+            for key, value in panels.items():
+                if key in rbac_include:
+                    result[key] = value
+                elif key in rbac_exclude:
+                    result.pop(key, None)
+
+            data["result"] = result
+            return self.original_connection.send_message(data)
+
+        def send_message(self, data: dict[str, Any]):
+            user = self.original_connection.user
+            user_id = user.id
+            access_config = self.hass.data.get(DOMAIN, {}).get("access_config", {})
+
+            rbac_enabled = access_config.get("enabled", True)
+            if not rbac_enabled:
+                _LOGGER.warning(f"RBAC is disabled - no filtering applied")
+                return self.original_connection.send_message(data)
+
+            users = access_config.get("users", {})
+            user_config = users.get(user_id)
+
+            if not user_config:
+                default_config = access_config["default_restrictions"]
+                default_rbac_panels = default_config["panels"]
+
+                rbac_exclude = set()
+                for key, access in default_rbac_panels.items():
+                    if access["hide"]:
+                        rbac_exclude.add(key)
+                # Check default restrictions
+                return self._send_filtered_data(data, False, {}, rbac_exclude)
+
+            user_role = user_config.get("role", "unknown")
+
+            roles = access_config.get("roles", {})
+            role_config = roles.get(user_role, {})
+
+            deny_all = role_config.get("deny_all", False)
+            rbac_panels = role_config.get("permissions", {}).get("panels", {})
+            rbac_include = set()
+            rbac_exclude = set()
+            for key, access in rbac_panels.items():
+                if access["allow"]:
+                    rbac_include.add(key)
+                else:
+                    rbac_exclude.add(key)
+
+            self._send_filtered_data(data, deny_all, rbac_include, rbac_exclude)
+
+
+    @callback
+    def rbac_websocket_get_panels(
+        get_panel_func: Callable[[HomeAssistant, ActiveConnection, dict[str, Any]], None]
+    ) -> Callable[[HomeAssistant, ActiveConnection, dict[str, Any]], None]:
+        def wrapper(
+            hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+        ) -> None:
+            new_connection = RBACFilterPanelActiveConnection(hass, connection)
+            get_panel_func(hass, new_connection,  msg)
+
+        return wrapper
+
+    original_panel_handler, schema = hass.data[WS_DOMAIN]["get_panels"]
+    hass.data[WS_DOMAIN]["get_panels"] = rbac_websocket_get_panels(original_panel_handler), schema
 
 def _patch_service_registry(hass: HomeAssistant):
     """Patch the service registry to intercept service calls."""
