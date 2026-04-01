@@ -32,12 +32,11 @@ _LOGGER = logging.getLogger(__name__)
 def _get_available_roles(hass: HomeAssistant) -> list:
     """Get available roles from access control configuration."""
     if DOMAIN not in hass.data:
-        return ["guest", "user", "admin", "super_admin"]  # Default roles
+        return ["guest", "user", "admin", "super_admin"]
     
     access_config = hass.data[DOMAIN].get("access_config", {})
     roles = list(access_config.get("roles", {}).keys())
     
-    # If no roles defined, use default roles
     if not roles:
         roles = ["guest", "user", "admin", "super_admin"]
     
@@ -57,7 +56,6 @@ RELOAD_CONFIG_SCHEMA = vol.Schema({})
 
 LIST_USERS_SCHEMA = vol.Schema({})
 
-# User management schemas (restricted to top-level users)
 ADD_USER_SCHEMA = vol.Schema({
     vol.Required("person"): cv.string,
     vol.Required("role"): cv.string,
@@ -73,7 +71,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Handle the get_user_config service call."""
         person_entity_id = call.data.get("person", "")
         
-        # Extract user_id from person entity
         try:
             person_state = hass.states.get(person_entity_id)
             if not person_state:
@@ -105,7 +102,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": f"User '{user_id}' not found in configuration (has full access)"
             }
         
-        # Fire event with the data
         hass.bus.async_fire("rbac_service_response", {
             "service": "get_user_config",
             "data": response_data
@@ -115,7 +111,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_reload_config(call: ServiceCall) -> Dict[str, Any]:
         """Handle the reload_config service call."""
-        # Check if caller has top-level access
         caller_id = call.context.user_id if call.context else None
         if not caller_id or not _is_top_level_user(hass, caller_id):
             _LOGGER.warning(f"Access denied: User {caller_id} attempted to reload config")
@@ -181,7 +176,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         person_entity_id = call.data.get("person", "")
         role = call.data.get("role", "")
         
-        # Validate role
         if not role:
             raise HomeAssistantError("Role is required")
         
@@ -189,7 +183,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             available_roles = _get_available_roles(hass)
             raise HomeAssistantError(f"Invalid role '{role}'. Available roles: {', '.join(available_roles)}")
         
-        # Extract user_id from person entity
         try:
             person_state = hass.states.get(person_entity_id)
             if not person_state:
@@ -213,7 +206,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": f"Error extracting user_id from person {person_entity_id}: {e}"
             }
         
-        # Check if caller has top-level access
         caller_id = call.context.user_id if call.context else None
         if not caller_id or not _is_top_level_user(hass, caller_id):
             _LOGGER.warning(f"Access denied: User {caller_id} attempted to add user {user_id}")
@@ -222,7 +214,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": "Access denied: Only admin users can add users"
             }
         
-        # Check if user is a built-in HA user
         if _is_builtin_ha_user(user_id):
             _LOGGER.warning(f"Cannot add built-in Home Assistant user: {user_id}")
             return {
@@ -547,14 +538,22 @@ class RBACConfigView(HomeAssistantView):
                     access_config["users"][user_id] = {}
                 access_config["users"][user_id]["role"] = role_name
                 
-            elif action == "update_default_restrictions":
-                restrictions = data.get("restrictions")
+            elif action == "update_default_role":
+                default_role = data.get("default_role")
                 
-                if not restrictions:
-                    return self.json({"error": "Missing restrictions"}, status_code=400)
+                if default_role is None:
+                    return self.json({"error": "Missing default_role"}, status_code=400)
                 
-                # Update default restrictions
-                access_config["default_restrictions"] = restrictions
+                if default_role == "none":
+                    default_role = ""
+                
+                # Validate the default role
+                if default_role and not _validate_role(hass, default_role):
+                    available_roles = _get_available_roles(hass)
+                    return self.json({"error": f"Invalid default role '{default_role}'. Available roles: {', '.join(available_roles)}"}, status_code=400)
+                
+                # Update default role
+                access_config["default_role"] = default_role
                 
             elif action == "update_settings":
                 # Update enabled, show_notifications, send_event, frontend_blocking_enabled, log_deny_list settings
@@ -1007,10 +1006,19 @@ class RBACFrontendBlockingView(HomeAssistantView):
     requires_auth = True
     
     async def get(self, request):
-        """Get frontend blocking configuration for current user."""
+        """Get frontend blocking configuration for current user or specified user."""
         try:
             hass = request.app["hass"]
-            user = request["hass_user"]
+            current_user = request["hass_user"]
+            
+            # Get optional user_id parameter from query string
+            target_user_id = request.query.get("user_id")
+            
+            # Determine which user to get configuration for
+            if target_user_id:
+                target_user_id = target_user_id
+            else:
+                target_user_id = current_user.id
             
             # Get access control configuration
             access_config = hass.data.get(DOMAIN, {}).get("access_config", {})
@@ -1028,7 +1036,7 @@ class RBACFrontendBlockingView(HomeAssistantView):
             
             # Get user configuration
             users = access_config.get("users", {})
-            user_config = users.get(user.id)
+            user_config = users.get(target_user_id)
             
             if not user_config:
                 # User not in config, return empty blocking (full access)
@@ -1053,285 +1061,57 @@ class RBACFrontendBlockingView(HomeAssistantView):
                     "services": []
                 })
             
-            # Check if role has deny_all enabled
-            deny_all = role_config.get("deny_all", False)
-            if deny_all:
-                # In deny_all mode, we need to get all available domains/entities
-                # and only allow those explicitly marked with allow: true
-                hass = request.app["hass"]
-                
-                # Get all available domains and entities
-                all_available_domains = set()
-                all_available_entities = set()
-                
-                # Get domains from all states
-                for state in hass.states.async_all():
-                    domain = state.entity_id.split('.')[0]
-                    all_available_domains.add(domain)
-                    all_available_entities.add(state.entity_id)
-                
-                # Get domains from services
-                for domain in hass.services.async_services():
-                    all_available_domains.add(domain)
-                
-                # Get role permissions to find allowed items
-                role_permissions = role_config.get("permissions", {})
-                role_domains = role_permissions.get("domains", {})
-                role_entities = role_permissions.get("entities", {})
-                
-                # Get user-specific restrictions
-                user_restrictions = user_config.get("restrictions", {})
-                user_domains = user_restrictions.get("domains", {})
-                user_entities = user_restrictions.get("entities", {})
-                
-                # Build blocked and allowed lists - block everything except explicitly allowed
-                blocked_domains = []
-                blocked_entities = []
-                blocked_services = []
-                allowed_domains = []
-                allowed_entities = []
-                
-                # Process domains - block all except those with allow: true
-                for domain in all_available_domains:
-                    domain_allowed = False
-                    
-                    # Check user-specific restrictions first
-                    if domain in user_domains:
-                        user_domain_config = user_domains[domain]
-                        if isinstance(user_domain_config, dict):
-                            domain_allowed = user_domain_config.get("allow", False)
-                    
-                    # Check role-specific permissions
-                    if not domain_allowed and domain in role_domains:
-                        role_domain_config = role_domains[domain]
-                        if isinstance(role_domain_config, dict):
-                            domain_allowed = role_domain_config.get("allow", False)
-                    
-                    if domain_allowed:
-                        allowed_domains.append(domain)
-                    else:
-                        blocked_domains.append(domain)
-                
-                # Process entities - block all except those with allow: true
-                for entity in all_available_entities:
-                    entity_allowed = False
-                    
-                    # Check user-specific restrictions first
-                    if entity in user_entities:
-                        user_entity_config = user_entities[entity]
-                        if isinstance(user_entity_config, dict):
-                            entity_allowed = user_entity_config.get("allow", False)
-                    
-                    # Check role-specific permissions
-                    if not entity_allowed and entity in role_entities:
-                        role_entity_config = role_entities[entity]
-                        if isinstance(role_entity_config, dict):
-                            entity_allowed = role_entity_config.get("allow", False)
-                    
-                    if entity_allowed:
-                        allowed_entities.append(entity)
-                    else:
-                        blocked_entities.append(entity)
-                
-                return self.json({
-                    "enabled": True,
-                    "domains": blocked_domains,
-                    "entities": blocked_entities,
-                    "services": blocked_services,
-                    "allowed_domains": allowed_domains,
-                    "allowed_entities": allowed_entities
-                })
-            
-            # Get default restrictions
-            default_restrictions = access_config.get("default_restrictions", {})
-            default_domains = default_restrictions.get("domains", {})
-            default_entities = default_restrictions.get("entities", {})
-            
-            # Get role-specific permissions
+            # Get role permissions (handle both old and new structure)
             role_permissions = role_config.get("permissions", {})
+            if not role_permissions:
+                role_permissions = role_config
+            
             role_domains = role_permissions.get("domains", {})
             role_entities = role_permissions.get("entities", {})
             
-            # Get user-specific restrictions
-            user_restrictions = user_config.get("restrictions", {})
-            user_domains = user_restrictions.get("domains", {})
-            user_entities = user_restrictions.get("entities", {})
+            # Check if role has deny_all enabled
+            deny_all = role_config.get("deny_all", False)
             
-            # Check if role allows by default (opposite of deny_all)
-            role_allows_by_default = not role_config.get("deny_all", False)
+            from . import _check_service_access_with_reason
             
-            # Get all available domains and entities from Home Assistant
-            all_available_domains = set()
-            all_available_entities = set()
-            
-            # Get domains from all states
+            # Get all available entities from Home Assistant
+            all_entities = []
             for state in hass.states.async_all():
-                domain = state.entity_id.split('.')[0]
-                all_available_domains.add(domain)
-                all_available_entities.add(state.entity_id)
+                all_entities.append(state.entity_id)
             
-            # Get domains from services
-            for domain in hass.services.async_services():
-                all_available_domains.add(domain)
+            # Filter entities using the same logic as service calls
+            accessible_entities = []
             
-            # Build blocked and allowed lists
-            blocked_domains = []
-            blocked_entities = []
-            blocked_services = []
-            allowed_domains = []
-            allowed_entities = []
+            for entity_id in all_entities:
+                domain = entity_id.split('.')[0]
+                
+                # Test access using the same function that checks service calls
+                has_access, reason = _check_service_access_with_reason(
+                    domain=domain,
+                    service="turn_on",
+                    service_data={"entity_id": entity_id},
+                    user_id=target_user_id,
+                    access_config=access_config,
+                    hass=hass
+                )
+                
+                if has_access:
+                    accessible_entities.append(entity_id)
             
-            # Process domains
-            for domain in all_available_domains:
-                domain_blocked = False
-                domain_services = []
-                domain_allowed = False
-                
-                # Check user-specific restrictions first (highest priority)
-                if domain in user_domains:
-                    user_domain_config = user_domains[domain]
-                    if isinstance(user_domain_config, dict):
-                        user_services = user_domain_config.get("services", [])
-                        domain_allowed = user_domain_config.get("allow", False)
-                        if domain_allowed:
-                            # User explicitly allows this domain
-                            allowed_domains.append(domain)
-                            continue
-                        if not user_services:  # Empty list means block all
-                            domain_blocked = True
-                        else:
-                            domain_services = user_services
-                    else:
-                        domain_blocked = True  # Non-dict means block all
-                
-                # Check role-specific permissions (medium priority)
-                elif domain in role_domains:
-                    role_domain_config = role_domains[domain]
-                    if isinstance(role_domain_config, dict):
-                        role_services = role_domain_config.get("services", [])
-                        domain_allowed = role_domain_config.get("allow", False)
-                        if domain_allowed:
-                            # Role explicitly allows this domain
-                            allowed_domains.append(domain)
-                            continue
-                        if not role_services:  # Empty list means block all
-                            domain_blocked = True
-                        else:
-                            domain_services = role_services
-                    else:
-                        domain_blocked = True  # Non-dict means block all
-                
-                # Check default restrictions (lowest priority)
-                elif domain in default_domains:
-                    default_domain_config = default_domains[domain]
-                    if isinstance(default_domain_config, dict):
-                        default_services = default_domain_config.get("services", [])
-                        domain_allowed = default_domain_config.get("allow", False)
-                        if domain_allowed:
-                            # Default explicitly allows this domain
-                            allowed_domains.append(domain)
-                            continue
-                        if not default_services:  # Empty list means block all
-                            domain_blocked = True
-                        else:
-                            domain_services = default_services
-                    else:
-                        domain_blocked = True  # Non-dict means block all
-                
-                # If no explicit configuration found, apply role's default behavior
-                else:
-                    if not role_allows_by_default:
-                        # Role denies by default, so block this domain
-                        domain_blocked = True
-                    # If role allows by default, don't block (domain_allowed remains False)
-                
-                if domain_blocked:
-                    blocked_domains.append(domain)
-                elif domain_services:
-                    # Add specific services to blocked services list
-                    for service in domain_services:
-                        blocked_services.append(f"{domain}.{service}")
-            
-            # Process entities
-            for entity in all_available_entities:
-                entity_blocked = False
-                entity_services = []
-                entity_allowed = False
-                
-                # Check user-specific restrictions first (highest priority)
-                if entity in user_entities:
-                    user_entity_config = user_entities[entity]
-                    if isinstance(user_entity_config, dict):
-                        user_services = user_entity_config.get("services", [])
-                        entity_allowed = user_entity_config.get("allow", False)
-                        if entity_allowed:
-                            # User explicitly allows this entity
-                            allowed_entities.append(entity)
-                            continue
-                        if not user_services:  # Empty list means block all
-                            entity_blocked = True
-                        else:
-                            entity_services = user_services
-                    else:
-                        entity_blocked = True  # Non-dict means block all
-                
-                # Check role-specific permissions (medium priority)
-                elif entity in role_entities:
-                    role_entity_config = role_entities[entity]
-                    if isinstance(role_entity_config, dict):
-                        role_services = role_entity_config.get("services", [])
-                        entity_allowed = role_entity_config.get("allow", False)
-                        if entity_allowed:
-                            # Role explicitly allows this entity
-                            allowed_entities.append(entity)
-                            continue
-                        if not role_services:  # Empty list means block all
-                            entity_blocked = True
-                        else:
-                            entity_services = role_services
-                    else:
-                        entity_blocked = True  # Non-dict means block all
-                
-                # Check default restrictions (lowest priority)
-                elif entity in default_entities:
-                    default_entity_config = default_entities[entity]
-                    if isinstance(default_entity_config, dict):
-                        default_services = default_entity_config.get("services", [])
-                        entity_allowed = default_entity_config.get("allow", False)
-                        if entity_allowed:
-                            # Default explicitly allows this entity
-                            allowed_entities.append(entity)
-                            continue
-                        if not default_services:  # Empty list means block all
-                            entity_blocked = True
-                        else:
-                            entity_services = default_services
-                    else:
-                        entity_blocked = True  # Non-dict means block all
-                
-                # If no explicit configuration found, apply role's default behavior
-                else:
-                    if not role_allows_by_default:
-                        # Role denies by default, so block this entity
-                        entity_blocked = True
-                    # If role allows by default, don't block (entity_allowed remains False)
-                
-                if entity_blocked:
-                    blocked_entities.append(entity)
-                elif entity_services:
-                    # Add specific services to blocked services list
-                    for service in entity_services:
-                        blocked_services.append(f"{entity}.{service}")
+            # Convert accessible entities to blocked/allowed format for frontend
+            blocked_entities = [e for e in all_entities if e not in accessible_entities]
+            allowed_entities = accessible_entities
+            blocked_domains = list(set([e.split('.')[0] for e in blocked_entities]))
+            allowed_domains = list(set([e.split('.')[0] for e in allowed_entities]))
             
             return self.json({
                 "enabled": True,
                 "domains": blocked_domains,
                 "entities": blocked_entities,
-                "services": blocked_services,
+                "services": [],
                 "allowed_domains": allowed_domains,
                 "allowed_entities": allowed_entities
             })
-            
         except Exception as e:
             _LOGGER.error(f"Error getting frontend blocking config: {e}")
             return self.json({"error": str(e)}, status_code=500)

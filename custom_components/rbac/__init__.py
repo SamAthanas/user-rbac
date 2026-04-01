@@ -53,26 +53,13 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "allow_chained_actions": False,
                 "last_rejection": "Never",
                 "last_user_rejected": "None",
-                "default_restrictions": {
-                    "domains": {
-                        "homeassistant": {
-                            "hide": False,
-                            "services": ["restart", "stop", "reload_config_entry", "check_config"]
-                        },
-                        "system_log": {
-                            "hide": True,
-                            "services": ["write", "clear"]
-                        },
-                        "hassio": {
-                            "hide": True,
-                            "services": ["host_reboot", "host_shutdown", "supervisor_update", "supervisor_restart"]
-                        }
-                    },
-                    "entities": {}
-                },
+                "default_role": "",
                 "users": {},
                 "roles": {
-                    "admin": {"description": "Administrator with most permissions"},
+                    "admin": {
+                        "description": "Administrator with most permissions",
+                        "admin": True
+                    },
                     "user": {"description": "Standard user with limited permissions"},
                     "guest": {"description": "Guest with minimal permissions"}
                 }
@@ -517,16 +504,22 @@ def _is_service_restricted_for_user(domain: str, service: str, user_id: str, has
     user_config = users.get(user_id)
     
     if not user_config:
-        default_restrictions = access_config.get("default_restrictions", {})
-        if default_restrictions:
-            default_domains = default_restrictions.get("domains", {})
-            if domain in default_domains:
-                domain_config = default_domains[domain]
-                if domain_config.get("hide", False):
-                    return True
-                default_services = domain_config.get("services", [])
-                if service in default_services:
-                    return True
+        # Check if there's a default role configured
+        default_role = access_config.get("default_role", "")
+        if default_role:
+            # Use the default role to check restrictions
+            roles = access_config.get("roles", {})
+            role_config = roles.get(default_role, {})
+            if role_config:
+                permissions = role_config.get("permissions", {})
+                domains = permissions.get("domains", {})
+                if domain in domains:
+                    domain_config = domains[domain]
+                    if domain_config.get("hide", False):
+                        return True
+                    services = domain_config.get("services", [])
+                    if service in services:
+                        return True
         return False
     
     restrictions = user_config.get("restrictions", {})
@@ -580,47 +573,26 @@ def _check_service_access_with_reason(
     user_config = users.get(user_id)
     
     if not user_config:
-        _LOGGER.warning(f"User {user_id} not in config, checking default restrictions")
-        default_restrictions = access_config.get("default_restrictions", {})
-        _LOGGER.warning(f"Default restrictions: {default_restrictions}")
-        if default_restrictions:
-            default_domains = default_restrictions.get("domains", {})
-            _LOGGER.warning(f"Checking domain {domain} against default domains: {default_domains}")
-            if domain in default_domains:
-                domain_config = default_domains[domain]
-                _LOGGER.warning(f"Found domain {domain} config: {domain_config}")
-                default_services = domain_config.get("services", [])
-                if not default_services:
-                    _LOGGER.warning(f"Domain {domain} blocks all services")
-                    return False, f"domain {domain} blocked by default"
-                elif service in default_services:
-                    return False, f"service {domain}.{service} blocked by default"
-            
-            if service_data and "entity_id" in service_data:
-                entity_id = service_data["entity_id"]
-                if isinstance(entity_id, list):
-                    for eid in entity_id:
-                        default_entities = default_restrictions.get("entities", {})
-                        if eid in default_entities:
-                            entity_config = default_entities[eid]
-                            default_entity_services = entity_config.get("services", [])
-                            if not default_entity_services:
-                                return False, f"entity {eid} blocked by default"
-                            elif service in default_entity_services:
-                                return False, f"entity {eid} service {service} blocked by default"
-                else:
-                    default_entities = default_restrictions.get("entities", {})
-                    if entity_id in default_entities:
-                        entity_config = default_entities[entity_id]
-                        default_entity_services = entity_config.get("services", [])
-                        if not default_entity_services:
-                            return False, f"entity {entity_id} blocked by default"
-                        elif service in default_entity_services:
-                            return False, f"entity {entity_id} service {service} blocked by default"
-        
-        return True, f"no default restrictions"
-    
-    user_role = user_config.get("role", "unknown")
+        _LOGGER.warning(f"User {user_id} not in config, checking default role")
+        default_role = access_config.get("default_role", "")
+        if default_role:
+            _LOGGER.warning(f"Using default role: {default_role}")
+            # Use the default role as if it was assigned to the user
+            user_role = default_role
+        else:
+            _LOGGER.warning(f"No default role configured, allowing access")
+            return True, f"no default role configured"
+    else:
+        user_role = user_config.get("role", "unknown")
+        # Check if user has "default" role assigned
+        if user_role == "default":
+            default_role = access_config.get("default_role", "")
+            if default_role:
+                _LOGGER.warning(f"User has 'default' role, using configured default role: {default_role}")
+                user_role = default_role
+            else:
+                _LOGGER.warning(f"User has 'default' role but no default role configured, allowing access")
+                return True, f"no default role configured"
     
     roles = access_config.get("roles", {})
     role_config = roles.get(user_role, {})
@@ -683,69 +655,14 @@ def _check_service_access_with_reason(
     
     deny_all = role_config.get("deny_all", False)
     
-    default_restrictions = access_config.get("default_restrictions", {})
     permissions = role_config.get("permissions", {})
+    if not permissions:
+        permissions = role_config
     if service_data and "entity_id" in service_data:
         entity_id = service_data["entity_id"]
         if isinstance(entity_id, list):
             for eid in entity_id:
-                # Check default entity restrictions
-                default_entities = default_restrictions.get("entities", {})
-                if eid in default_entities:
-                    default_entity_config = default_entities[eid]
-                    default_entity_services = default_entity_config.get("services", [])
-                    default_entity_allow = default_entity_config.get("allow", False)
-                    
-                    if default_entity_allow:
-                        # Default allow rule: check if service is in allowed services
-                        if not default_entity_services or service in default_entity_services:
-                            return True, f"entity {eid} service {service} allowed by default"
-                        else:
-                            return False, f"entity {eid} service {service} not in default allow list"
-                    else:
-                        # Default block rule
-                        if not default_entity_services:  # Default blocks all services
-                            # Check if role allows this entity
-                            role_entities = permissions.get("entities", {})
-                            if eid not in role_entities:
-                                return False, f"entity {eid} blocked by default restrictions"
-                            role_entity_config = role_entities[eid]
-                            role_entity_services = role_entity_config.get("services", [])
-                            role_entity_allow = role_entity_config.get("allow", False)
-                            
-                            if role_entity_allow:
-                                # Role allow rule: check if service is in allowed services
-                                if not role_entity_services or service in role_entity_services:
-                                    return True, f"entity {eid} service {service} allowed by role {user_role}"
-                                else:
-                                    return False, f"entity {eid} service {service} not in role allow list"
-                            else:
-                                # Role block rule
-                                if not role_entity_services:  # Role also blocks all services
-                                    return False, f"entity {eid} blocked by role {user_role}"
-                                elif service not in role_entity_services:  # Service not in role's allowed list
-                                    return False, f"entity {eid} service {service} not allowed by role {user_role}"
-                        elif service in default_entity_services:  # Default blocks specific service
-                            # Check if role allows this service
-                            role_entities = permissions.get("entities", {})
-                            if eid not in role_entities:
-                                return False, f"entity {eid} service {service} blocked by default restrictions"
-                            role_entity_config = role_entities[eid]
-                            role_entity_services = role_entity_config.get("services", [])
-                            role_entity_allow = role_entity_config.get("allow", False)
-                            
-                            if role_entity_allow:
-                                # Role allow rule: check if service is in allowed services
-                                if not role_entity_services or service in role_entity_services:
-                                    return True, f"entity {eid} service {service} allowed by role {user_role}"
-                                else:
-                                    return False, f"entity {eid} service {service} not in role allow list"
-                            else:
-                                # Role block rule
-                                if service in role_entity_services:  # Role also blocks this service
-                                    return False, f"entity {eid} service {service} blocked by role {user_role}"
-                
-                # Check role-specific entity restrictions (always check, even if no default restrictions)
+                # Check role-specific entity restrictions
                 role_entities = permissions.get("entities", {})
                 if eid in role_entities:
                     role_entity_config = role_entities[eid]
@@ -767,61 +684,7 @@ def _check_service_access_with_reason(
                         elif service in role_entity_services:  # Role blocks specific service
                             return False, f"entity {eid} service {service} blocked by role {user_role}"
         else:
-            # Same logic for single entity
-            default_entities = default_restrictions.get("entities", {})
-            if entity_id in default_entities:
-                default_entity_config = default_entities[entity_id]
-                default_entity_services = default_entity_config.get("services", [])
-                default_entity_allow = default_entity_config.get("allow", False)
-                
-                if default_entity_allow:
-                    # Default allow rule: check if service is in allowed services
-                    if not default_entity_services or service in default_entity_services:
-                        return True, f"entity {entity_id} service {service} allowed by default"
-                    else:
-                        return False, f"entity {entity_id} service {service} not in default allow list"
-                else:
-                    # Default block rule
-                    if not default_entity_services:  # Default blocks all services
-                        role_entities = permissions.get("entities", {})
-                        if entity_id not in role_entities:
-                            return False, f"entity {entity_id} blocked by default restrictions"
-                        role_entity_config = role_entities[entity_id]
-                        role_entity_services = role_entity_config.get("services", [])
-                        role_entity_allow = role_entity_config.get("allow", False)
-                        
-                        if role_entity_allow:
-                            # Role allow rule: check if service is in allowed services
-                            if not role_entity_services or service in role_entity_services:
-                                return True, f"entity {entity_id} service {service} allowed by role {user_role}"
-                            else:
-                                return False, f"entity {entity_id} service {service} not in role allow list"
-                        else:
-                            # Role block rule
-                            if not role_entity_services:  # Role also blocks all services
-                                return False, f"entity {entity_id} blocked by role {user_role}"
-                            elif service not in role_entity_services:  # Service not in role's allowed list
-                                return False, f"entity {entity_id} service {service} not allowed by role {user_role}"
-                    elif service in default_entity_services:  # Default blocks specific service
-                        role_entities = permissions.get("entities", {})
-                        if entity_id not in role_entities:
-                            return False, f"entity {entity_id} service {service} blocked by default restrictions"
-                        role_entity_config = role_entities[entity_id]
-                        role_entity_services = role_entity_config.get("services", [])
-                        role_entity_allow = role_entity_config.get("allow", False)
-                        
-                        if role_entity_allow:
-                            # Role allow rule: check if service is in allowed services
-                            if not role_entity_services or service in role_entity_services:
-                                return True, f"entity {entity_id} service {service} allowed by role {user_role}"
-                            else:
-                                return False, f"entity {entity_id} service {service} not in role allow list"
-                        else:
-                            # Role block rule
-                            if service in role_entity_services:  # Role also blocks this service
-                                return False, f"entity {entity_id} service {service} blocked by role {user_role}"
-            
-            # Check role-specific entity restrictions (always check, even if no default restrictions)
+            # Check role-specific entity restrictions for single entity
             role_entities = permissions.get("entities", {})
             if entity_id in role_entities:
                 role_entity_config = role_entities[entity_id]
@@ -843,59 +706,12 @@ def _check_service_access_with_reason(
                     elif service in role_entity_services:  # Role blocks specific service
                         return False, f"entity {entity_id} service {service} blocked by role {user_role}"
 
-    default_domains = default_restrictions.get("domains", {})
     role_domains = permissions.get("domains", {})
-    
-    if domain in default_domains:
-        default_config = default_domains[domain]
-        default_services = default_config.get("services", [])
-        default_allow = default_config.get("allow", False)
-        
-        if default_allow:
-            if not default_services or service in default_services:
-                return True, f"domain {domain} service {service} allowed by default"
-            else:
-                return False, f"domain {domain} service {service} not in default allow list"
-        else:
-            if not default_services:
-                if domain not in role_domains:
-                    return False, f"domain {domain} blocked by default restrictions"
-                role_config = role_domains[domain]
-                role_services = role_config.get("services", [])
-                role_allow = role_config.get("allow", False)
-                
-                if role_allow:
-                    if not role_services or service in role_services:
-                        return True, f"domain {domain} service {service} allowed by role {user_role}"
-                    else:
-                        return False, f"domain {domain} service {service} not in role allow list"
-                else:
-                    if not role_services:
-                        return False, f"domain {domain} blocked by role {user_role}"
-                    elif service not in role_services:
-                        return False, f"service {domain}.{service} not allowed by role {user_role}"
-            elif service in default_services:
-                if domain not in role_domains:
-                    return False, f"service {domain}.{service} blocked by default restrictions"
-                role_config = role_domains[domain]
-                role_services = role_config.get("services", [])
-                role_allow = role_config.get("allow", False)
-                
-                if role_allow:
-                    if not role_services or service in role_services:
-                        return True, f"domain {domain} service {service} allowed by role {user_role}"
-                    else:
-                        return False, f"domain {domain} service {service} not in role allow list"
-                else:
-                    if service in role_services:
-                        return False, f"service {domain}.{service} blocked by role {user_role}"
     
     if domain in role_domains:
         role_config = role_domains[domain]
         role_services = role_config.get("services", [])
         role_allow = role_config.get("allow", False)
-        
-        _LOGGER.warning(f"Found domain {domain} in role permissions: allow={role_allow}, services={role_services}")
         
         if role_allow:
             if not role_services or service in role_services:
@@ -909,6 +725,25 @@ def _check_service_access_with_reason(
                 return False, f"service {domain}.{service} blocked by role {user_role}"
     
     if deny_all and not ((domain == "system_log" and service == "write") or (domain == "browser_mod" and service == "notification")):
+        if domain in role_domains:
+            role_config = role_domains[domain]
+            role_allow = role_config.get("allow", False)
+            if role_allow:
+                role_services = role_config.get("services", [])
+                if not role_services or service in role_services:
+                    return True, f"domain {domain} service {service} allowed by role domain permissions (overrides deny_all)"
+        
+        if domain == "homeassistant" and service_data and "entity_id" in service_data:
+            entity_id = service_data["entity_id"]
+            if isinstance(entity_id, str):
+                entity_domain = entity_id.split('.')[0]
+                if entity_domain in role_domains:
+                    entity_domain_config = role_domains[entity_domain]
+                    if entity_domain_config.get("allow", False):
+                        entity_domain_services = entity_domain_config.get("services", [])
+                        if not entity_domain_services or service in entity_domain_services:
+                            return True, f"homeassistant service {service} allowed by entity domain {entity_domain} permissions"
+
         entity_ids = []
         
         if service_data and "entity_id" in service_data:

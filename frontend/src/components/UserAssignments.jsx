@@ -9,9 +9,15 @@ import {
   Select,
   Tag,
   Button,
-  Divider
+  Divider,
+  Modal,
+  Input,
+  List,
+  Spin,
+  Tooltip,
+  Pagination
 } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import { EditOutlined, EyeOutlined } from '@ant-design/icons';
 import { RoleEditModal } from './RoleEditModal';
 import { getHAAuth, makeAuthenticatedRequest } from '../utils/auth';
 
@@ -20,6 +26,14 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
   const [userRoles, setUserRoles] = useState({});
   const [editingRole, setEditingRole] = useState(null);
   const [editingRoleData, setEditingRoleData] = useState(null);
+  const [entityModalVisible, setEntityModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [accessibleEntities, setAccessibleEntities] = useState([]);
+  const [filteredEntities, setFilteredEntities] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loadingEntities, setLoadingEntities] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(15);
 
   // Initialize user roles from config
   useEffect(() => {
@@ -106,6 +120,8 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
     if (!roles.includes('admin')) roles.unshift('admin');
     if (!roles.includes('user')) roles.push('user');
     if (!roles.includes('guest')) roles.push('guest');
+    // Add "Default" option
+    roles.unshift('default');
     return roles;
   };
 
@@ -144,6 +160,108 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
   const closeRoleModal = () => {
     setEditingRole(null);
     setEditingRoleData(null);
+  };
+
+  const handleViewEntities = async (user) => {
+    setSelectedUser(user);
+    setEntityModalVisible(true);
+    setLoadingEntities(true);
+    setSearchTerm('');
+    
+    try {
+      // Get accessible entities using the existing RBAC frontend blocking API
+      const response = await makeAuthenticatedRequest(`/api/rbac/frontend-blocking?user_id=${user.id}`, {
+        method: 'GET'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch accessible entities');
+      }
+      
+      const blockingData = await response.json();
+      
+      // Get all entities from Home Assistant
+      const hassResponse = await makeAuthenticatedRequest('/api/states', {
+        method: 'GET'
+      });
+      
+      if (!hassResponse.ok) {
+        throw new Error('Failed to fetch entities');
+      }
+      
+      const allEntities = await hassResponse.json();
+      
+      let accessible = [];
+      
+      if (blockingData.enabled) {
+        accessible = allEntities.filter(entity => {
+          const entityId = entity.entity_id;
+          const domain = entityId.split('.')[0];
+          
+          if (blockingData.entities && blockingData.entities.includes(entityId)) {
+            return false;
+          }
+          
+          if (blockingData.allowed_entities && blockingData.allowed_entities.includes(entityId)) {
+            return true;
+          }
+          
+          if (blockingData.allowed_domains && blockingData.allowed_domains.includes(domain)) {
+            return true;
+          }
+          
+          return true;
+        });
+      } else {
+        accessible = allEntities;
+      }
+      
+      setAccessibleEntities(accessible);
+      setFilteredEntities(accessible);
+      
+    } catch (error) {
+      console.error('Error fetching accessible entities:', error);
+      onError('Failed to load accessible entities');
+      setAccessibleEntities([]);
+      setFilteredEntities([]);
+    } finally {
+      setLoadingEntities(false);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    const term = e.target.value.toLowerCase();
+    setSearchTerm(term);
+    setCurrentPage(1); // Reset to first page when searching
+    
+    if (!term) {
+      setFilteredEntities(accessibleEntities);
+    } else {
+      const filtered = accessibleEntities.filter(entity => 
+        entity.attributes.friendly_name?.toLowerCase().includes(term) ||
+        entity.entity_id.toLowerCase().includes(term)
+      );
+      setFilteredEntities(filtered);
+    }
+  };
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const getCurrentPageEntities = () => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredEntities.slice(startIndex, endIndex);
+  };
+
+  const closeEntityModal = () => {
+    setEntityModalVisible(false);
+    setSelectedUser(null);
+    setAccessibleEntities([]);
+    setFilteredEntities([]);
+    setSearchTerm('');
+    setCurrentPage(1);
   };
 
   return (
@@ -198,8 +316,20 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
                     </Typography.Text>
                   </Space>
                   
-                  {/* Role Selector - Right Aligned */}
-                  <div>
+                  {/* Role Selector and Eye Icon - Right Aligned */}
+                  <Space>
+                    <Tooltip title={`View accessible entities for ${getUserDisplayName(user)}`}>
+                      <Button
+                        icon={<EyeOutlined />}
+                        size="small"
+                        onClick={() => handleViewEntities(user)}
+                        disabled={loading}
+                        style={{ 
+                          border: '1px dashed #1890ff',
+                          color: '#1890ff'
+                        }}
+                      />
+                    </Tooltip>
                     <Select
                       value={isRoleValid(user.id) ? (userRoles[user.id] || 'user') : undefined}
                       onChange={(value) => handleRoleChange(user.id, value)}
@@ -211,11 +341,11 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
                     >
                       {getAvailableRoles().map(role => (
                         <Select.Option key={role} value={role}>
-                          {role.charAt(0).toUpperCase() + role.slice(1)}
+                          {role === 'default' ? 'Default' : role.charAt(0).toUpperCase() + role.slice(1)}
                         </Select.Option>
                       ))}
                     </Select>
-                  </div>
+                  </Space>
                 </Space>
               </Card>
             </Col>
@@ -238,6 +368,102 @@ export function UserAssignments({ data, onSuccess, onError, onDataChange, isDark
         onError={onError}
         onDataChange={onDataChange}
       />
+
+      {/* Entity Access Modal */}
+      <Modal
+        title={`Accessible Entities - ${selectedUser ? getUserDisplayName(selectedUser) : ''}`}
+        open={entityModalVisible}
+        onCancel={closeEntityModal}
+        footer={null}
+        width={500}
+        style={{ top: 20 }}
+        bodyStyle={{ 
+          maxHeight: 'calc(100vh - 200px)', 
+          overflow: 'hidden',
+          padding: '16px 0'
+        }}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Input
+            placeholder="Search entities..."
+            value={searchTerm}
+            onChange={handleSearchChange}
+            allowClear
+            size="small"
+          />
+        </div>
+        
+        <Spin spinning={loadingEntities}>
+          <div style={{ 
+            maxHeight: 'calc(100vh - 350px)', 
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ 
+              flex: 1,
+              overflowY: 'auto',
+              overflowX: 'hidden'
+            }}>
+              <List
+                dataSource={getCurrentPageEntities()}
+                renderItem={(entity) => (
+                  <List.Item style={{ padding: '8px 0' }}>
+                    <List.Item.Meta
+                      avatar={
+                        <Avatar
+                          size={24}
+                          style={{ 
+                            backgroundColor: '#f0f0f0',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {entity.entity_id.split('.')[0].charAt(0).toUpperCase()}
+                        </Avatar>
+                      }
+                      title={
+                        <Typography.Text strong style={{ fontSize: '14px' }}>
+                          {entity.attributes.friendly_name || entity.entity_id}
+                        </Typography.Text>
+                      }
+                      description={
+                        <Typography.Text type="secondary" style={{ fontSize: '11px' }}>
+                          {entity.entity_id}
+                        </Typography.Text>
+                      }
+                    />
+                  </List.Item>
+                )}
+                pagination={false}
+                locale={{
+                  emptyText: 'No accessible entities found'
+                }}
+              />
+            </div>
+            
+            {/* Fixed pagination at bottom */}
+            <div style={{ 
+              flexShrink: 0,
+              borderTop: '1px solid #f0f0f0',
+              paddingTop: 12,
+              textAlign: 'right',
+              backgroundColor: 'white'
+            }}>
+              <Pagination
+                current={currentPage}
+                pageSize={pageSize}
+                total={filteredEntities.length}
+                onChange={handlePageChange}
+                showSizeChanger={false}
+                showQuickJumper={false}
+                showTotal={(total, range) => `${range[0]}-${range[1]} of ${total}`}
+                size="small"
+                simple
+              />
+            </div>
+          </div>
+        </Spin>
+      </Modal>
     </div>
   );
 }
