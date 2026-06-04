@@ -412,6 +412,23 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
                         </Tag>
                       </Tooltip>
                     )}
+                    {Object.keys(role.permissions?.panels || {}).length > 0 && (
+                      <Tooltip
+                        title={
+                          <div>
+                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Dashboards:</div>
+                            {Object.keys(role.permissions.panels).map(panel => (
+                              <div key={panel} style={{ fontSize: '12px' }}>• {panel}</div>
+                            ))}
+                          </div>
+                        }
+                        placement="top"
+                      >
+                        <Tag color="green">
+                          {Object.keys(role.permissions.panels).length} panels
+                        </Tag>
+                      </Tooltip>
+                    )}
                   </Space>
                 </div>
               </Card>
@@ -442,6 +459,7 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
         domains={data.domains}
         entities={data.entities}
         services={data.services}
+        panels={data.panels}
       />
 
       {/* Role Create Modal */}
@@ -455,6 +473,7 @@ export function RolesManagement({ data, onSuccess, onError, onDataChange }) {
         domains={data.domains}
         entities={data.entities}
         services={data.services}
+        panels={data.panels}
       />
     </div>
   );

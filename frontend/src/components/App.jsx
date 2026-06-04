@@ -35,6 +35,7 @@ export function App() {
     users: [],
     domains: [],
     entities: [],
+    panels: [],
     services: [],
     config: null
   });
@@ -144,19 +145,20 @@ export function App() {
       }
 
       console.log('Making API calls...');
-      const [usersRes, domainsRes, entitiesRes, servicesRes, configRes] = await Promise.all([
+      const [usersRes, domainsRes, entitiesRes, panelsRes, servicesRes, configRes] = await Promise.all([
         makeAuthenticatedRequest('/api/rbac/users'),
         makeAuthenticatedRequest('/api/rbac/domains'),
         makeAuthenticatedRequest('/api/rbac/entities'),
+        makeAuthenticatedRequest('/api/rbac/panels'),
         makeAuthenticatedRequest('/api/rbac/services'),
         makeAuthenticatedRequest('/api/rbac/config')
       ]);
 
-      console.log('API responses:', { usersRes, domainsRes, entitiesRes, servicesRes, configRes });
+      console.log('API responses:', { usersRes, domainsRes, entitiesRes, panelsRes, servicesRes, configRes });
 
       // Check for admin access denied (403)
-      if (usersRes.status === 403 || domainsRes.status === 403 || entitiesRes.status === 403 || 
-          servicesRes.status === 403 || configRes.status === 403) {
+      if (usersRes.status === 403 || domainsRes.status === 403 || entitiesRes.status === 403 ||
+          panelsRes.status === 403 || servicesRes.status === 403 || configRes.status === 403) {
         const errorData = await configRes.json();
         
         // Set admin access denied state
@@ -178,8 +180,8 @@ export function App() {
       }
 
       // Check if any API call returns 404 or indicates integration not configured
-      if (usersRes.status === 404 || domainsRes.status === 404 || entitiesRes.status === 404 || 
-          servicesRes.status === 404 || configRes.status === 404) {
+      if (usersRes.status === 404 || domainsRes.status === 404 || entitiesRes.status === 404 ||
+          panelsRes.status === 404 || servicesRes.status === 404 || configRes.status === 404) {
         setIntegrationConfigured(false);
         if (isManualReload) {
           setReloading(false);
@@ -189,20 +191,21 @@ export function App() {
         return;
       }
 
-      if (!usersRes.ok || !domainsRes.ok || !entitiesRes.ok || !servicesRes.ok || !configRes.ok) {
+      if (!usersRes.ok || !domainsRes.ok || !entitiesRes.ok || !panelsRes.ok || !servicesRes.ok || !configRes.ok) {
         throw new Error('Failed to load data from API');
       }
 
-      const [users, domains, entities, services, config] = await Promise.all([
+      const [users, domains, entities, panels, services, config] = await Promise.all([
         usersRes.json(),
         domainsRes.json(),
         entitiesRes.json(),
+        panelsRes.json(),
         servicesRes.json(),
         configRes.json()
       ]);
 
-      console.log('Loaded data:', { users, domains, entities, services, config });
-      setData({ users, domains, entities, services, config });
+      console.log('Loaded data:', { users, domains, entities, panels, services, config });
+      setData({ users, domains, entities, panels, services, config });
       setIntegrationConfigured(true);
       
       // Load enabled state from config

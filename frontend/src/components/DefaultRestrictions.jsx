@@ -13,7 +13,8 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
   const [loading, setLoading] = useState(false);
   const [restrictions, setRestrictions] = useState({
     domains: [],
-    entities: []
+    entities: [],
+    panels: []
   });
 
   // Initialize restrictions from config
@@ -22,7 +23,8 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
       const defaultRestrictions = data.config.default_restrictions;
       setRestrictions({
         domains: Object.keys(defaultRestrictions.domains || {}),
-        entities: Object.keys(defaultRestrictions.entities || {})
+        entities: Object.keys(defaultRestrictions.entities || {}),
+        panels: Object.keys(defaultRestrictions.panels || {})
       });
     }
   }, [data.config]);
@@ -39,7 +41,8 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
       const defaultRestrictions = {
         domains: {},
         entities: {},
-        services: {}
+        services: {},
+        panels: {}
       };
 
       // Add domain restrictions
@@ -55,6 +58,13 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
         defaultRestrictions.entities[entity] = {
           hide: true,
           services: []
+        };
+      });
+
+      // Add entity restrictions
+      restrictions.panels.forEach(panel => {
+        defaultRestrictions.panels[panel] = {
+          hide: true,
         };
       });
 
@@ -161,6 +171,16 @@ export function DefaultRestrictions({ data, onSuccess, onError }) {
             selectedValues={restrictions.entities}
             onSelectionChange={(entities) => setRestrictions(prev => ({ ...prev, entities }))}
             placeholder="Select entities to restrict..."
+            disabled={loading}
+          />
+        </Col>
+
+        <Col xs={24} md={12}>
+          <AntMultiSelect
+            options={data.panels || []}
+            selectedValues={restrictions.panels}
+            onSelectionChange={(panels) => setRestrictions(prev => ({ ...prev, panels }))}
+            placeholder="Select panels to restrict..."
             disabled={loading}
           />
         </Col>

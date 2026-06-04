@@ -16,12 +16,14 @@ export function RoleEditModal({
   availableRoles = [],
   domains = [],
   entities = [],
-  services = {}
+  services = {},
+  panels = []
 }) {
   const [form] = Form.useForm();
   const [showTemplate, setShowTemplate] = useState(false);
   const [domainRestrictions, setDomainRestrictions] = useState([]);
   const [entityRestrictions, setEntityRestrictions] = useState([]);
+  const [panelRestrictions, setPanelRestrictions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [denyAll, setDenyAll] = useState(false);
   const [templateTestResult, setTemplateTestResult] = useState(null); // null, 'loading', 'true', 'false', 'error'
@@ -31,6 +33,7 @@ export function RoleEditModal({
   const [currentUserEntity, setCurrentUserEntity] = useState(null);
   const [showDomainSelects, setShowDomainSelects] = useState({});
   const [showEntitySelects, setShowEntitySelects] = useState({});
+  const [showPanelSelects, setShowPanelSelects] = useState({});
 
   useEffect(() => {
     if (visible && roleConfig) {
@@ -41,12 +44,14 @@ export function RoleEditModal({
         deny_all: roleConfig.deny_all || false,
         fallbackRole: roleConfig.fallbackRole || '',
         domains: roleConfig.permissions?.domains || {},
-        entities: roleConfig.permissions?.entities || {}
+        entities: roleConfig.permissions?.entities || {},
+        panels: roleConfig.permissions?.panels || {},
       });
       
       // Initialize restrictions arrays
       const domainRestrictions = [];
       const entityRestrictions = [];
+      const panelRestrictions = [];
       
       if (roleConfig.permissions?.domains) {
         Object.entries(roleConfig.permissions.domains).forEach(([domain, config]) => {
@@ -68,8 +73,18 @@ export function RoleEditModal({
         });
       }
       
+      if (roleConfig.permissions?.panels) {
+        Object.entries(roleConfig.permissions.panels).forEach(([panel, config]) => {
+          panelRestrictions.push({
+            panel,
+            allow: config.allow || false
+          });
+        });
+      }
+      
       setDomainRestrictions(domainRestrictions);
       setEntityRestrictions(entityRestrictions);
+      setPanelRestrictions(panelRestrictions);
       setShowTemplate(!!roleConfig.template);
       setIsAdmin(roleConfig.admin || false);
       setDenyAll(roleConfig.deny_all || false);
@@ -138,12 +153,18 @@ export function RoleEditModal({
         ...restriction,
         allow: true
       }));
+      const updatedPanelRestrictions = panelRestrictions.map(restriction => ({
+        ...restriction,
+        allow: true
+      }));
       setDomainRestrictions(updatedDomainRestrictions);
       setEntityRestrictions(updatedEntityRestrictions);
+      setPanelRestrictions(updatedPanelRestrictions);
     } else if (choice === 'clear') {
       // Clear all restrictions
       setDomainRestrictions([]);
       setEntityRestrictions([]);
+      setPanelRestrictions([]);
     } else if (choice === 'cancel') {
       // Cancel - disable deny_all and keep existing restrictions
       setDenyAll(false);
@@ -158,6 +179,7 @@ export function RoleEditModal({
       // Convert restrictions arrays back to objects
       const domains = {};
       const entities = {};
+      const panels = {};
       
       domainRestrictions.forEach(restriction => {
         domains[restriction.domain] = {
@@ -173,13 +195,20 @@ export function RoleEditModal({
         };
       });
       
+      panelRestrictions.forEach(restriction => {
+        panels[restriction.panel] = {
+          allow: restriction.allow || false
+        };
+      });
+      
       const roleData = {
         description: values.description,
         admin: values.admin || false,
         deny_all: values.deny_all || false,
         permissions: {
           domains,
-          entities
+          entities,
+          panels
         }
       };
       
@@ -263,12 +292,46 @@ export function RoleEditModal({
     setEntityRestrictions(updated);
   };
 
+  const addPanelRestriction = () => {
+    const newIndex = panelRestrictions.length;
+    setPanelRestrictions([...panelRestrictions, { panel: '', allow: denyAll }]);
+    setShowPanelSelects({ ...showPanelSelects, [newIndex]: false });
+  };
+
+  const removePanelRestriction = (index) => {
+    setPanelRestrictions(panelRestrictions.filter((_, i) => i !== index));
+    // Clean up show state for removed restriction
+    const newShowStates = { ...showPanelSelects };
+    delete newShowStates[index];
+    // Reindex remaining states
+    const reindexedStates = {};
+    Object.keys(newShowStates).forEach(key => {
+      const keyIndex = parseInt(key);
+      if (keyIndex > index) {
+        reindexedStates[keyIndex - 1] = newShowStates[key];
+      } else if (keyIndex < index) {
+        reindexedStates[keyIndex] = newShowStates[key];
+      }
+    });
+    setShowPanelSelects(reindexedStates);
+  };
+
+  const updatePanelRestriction = (index, field, value) => {
+    const updated = [...panelRestrictions];
+    updated[index] = { ...updated[index], [field]: value };
+    setPanelRestrictions(updated);
+  };
+
   const showDomainSelect = (index) => {
     setShowDomainSelects({ ...showDomainSelects, [index]: true });
   };
 
   const showEntitySelect = (index) => {
     setShowEntitySelects({ ...showEntitySelects, [index]: true });
+  };
+
+  const showPanelSelect = (index) => {
+    setShowPanelSelects({ ...showPanelSelects, [index]: true });
   };
 
   const getServicesForDomain = (domain) => {
@@ -467,8 +530,8 @@ export function RoleEditModal({
                         setDenyAll(checked);
                         form.setFieldsValue({ deny_all: checked });
                         if (checked) {
-                          // Check if there are existing domains/entities with allow=false to convert
-                          const hasBlockingRestrictions = domainRestrictions.some(r => !r.allow) || entityRestrictions.some(r => !r.allow);
+                          // Check if there are existing domains/entities/panels with allow=false to convert
+                          const hasBlockingRestrictions = domainRestrictions.some(r => !r.allow) || entityRestrictions.some(r => !r.allow) || panelRestrictions.some(r => !r.allow);
                           if (hasBlockingRestrictions) {
                             // Show conversion warning dialog
                             showConversionWarning();
@@ -933,11 +996,68 @@ export function RoleEditModal({
         >
           Add Entity
         </Button>
+
+        <Divider>Dashboards</Divider>
+
+        {panelRestrictions.map((restriction, index) => (
+          <div key={index} style={{ marginBottom: 16, padding: 16, border: '1px solid #f0f0f0', borderRadius: 6 }} data-restriction-index={index}>
+            <Row gutter={16} align="middle">
+              <Col span={20}>
+                <Select
+                  showSearch
+                  placeholder="Select dashboard"
+                  value={restriction.panel}
+                  onChange={(value) => updatePanelRestriction(index, 'panel', value)}
+                  style={{ width: '100%' }}
+                  filterOption={(input, option) =>
+                    option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                  }
+                >
+                  {panels.map(panel => (
+                    <Select.Option key={panel} value={panel}>{panel}</Select.Option>
+                  ))}
+                </Select>
+              </Col>
+              <Col span={2}>
+                <Tooltip title={restriction.allow ? "Allow this dashboard" : "Block this dashboard"}>
+                  <Switch
+                    size="small"
+                    checked={restriction.allow}
+                    onChange={(checked) => updatePanelRestriction(index, 'allow', checked)}
+                    checkedChildren="✓"
+                    unCheckedChildren="✗"
+                    disabled={denyAll && restriction.allow}
+                    style={{
+                      backgroundColor: restriction.allow ? '#52c41a' : '#ff4d4f'
+                    }}
+                  />
+                </Tooltip>
+              </Col>
+              <Col span={2}>
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => removePanelRestriction(index)}
+                />
+              </Col>
+            </Row>
+          </div>
+        ))}
+
+        <Button
+          type="dashed"
+          icon={<PlusOutlined />}
+          onClick={addPanelRestriction}
+          style={{ width: '100%' }}
+        >
+          Add Dashboard
+        </Button>
           </>
         )}
       </Form>
       </Modal>
-      
+
       {/* Conversion Warning Modal */}
       <Modal
         title="Convert Existing Restrictions?"

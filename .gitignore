@@ -18,6 +18,7 @@ build/
 .idea/
 *.swp
 *.swo
+.nvim.lua
 
 # OS files
 .DS_Store
@@ -25,6 +26,7 @@ Thumbs.db
 
 # Python
 __pycache__/
+.venv/
 *.py[cod]
 *$py.class
 *.so

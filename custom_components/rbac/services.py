@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util.json import JsonObjectType
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.frontend import DATA_PANELS
 from aiohttp import web
 
 from . import (
@@ -725,6 +726,36 @@ class RBACEntitiesView(HomeAssistantView):
             return self.json(sorted(entities))
         except Exception as e:
             _LOGGER.error(f"Error getting entities: {e}")
+            return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACPanelsView(HomeAssistantView):
+    """Handle RBAC panels API requests."""
+
+    url = "/api/rbac/panels"
+    name = "api:rbac:panels"
+    requires_auth = True
+
+    async def get(self, request):
+        """Get all available entities."""
+        hass = request.app["hass"]
+        user = request["hass_user"]
+
+        # Check admin permissions
+        if not await _is_admin_user(hass, user.id):
+            return self.json({
+                "error": "Admin access required",
+                "message": "Only administrators can access entity information",
+                "redirect_url": "/"
+            }, status_code=403)
+
+        try:
+            all_panels = hass.data[DATA_PANELS]
+            panels = [key for key in all_panels.keys()]
+
+            return self.json(sorted(panels))
+        except Exception as e:
+            _LOGGER.error(f"Error getting panels: {e}")
             return self.json({"error": str(e)}, status_code=500)
 
 
