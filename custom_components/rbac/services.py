@@ -1,7 +1,10 @@
 """Services for the RBAC integration."""
+import json
 import logging
-import os
 import mimetypes
+import os
+import secrets
+import time
 from typing import Any, Dict
 
 import voluptuous as vol
@@ -999,6 +1002,122 @@ class RBACTemplateEvaluateView(HomeAssistantView):
             }, status_code=200)  # Return 200 so frontend can handle error gracefully
 
 
+PANEL_TOKEN_TTL_SECONDS = 120
+
+
+def _create_panel_token(
+    hass: HomeAssistant, access_token: str, refresh_token: str | None = None
+) -> str:
+    """Create a short-lived one-time token for the RBAC config panel."""
+    token = secrets.token_urlsafe(32)
+    store = hass.data.setdefault(DOMAIN, {}).setdefault("panel_tokens", {})
+    now = time.time()
+    for key, entry in list(store.items()):
+        if entry["expires"] < now:
+            del store[key]
+    store[token] = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires": now + PANEL_TOKEN_TTL_SECONDS,
+    }
+    return token
+
+
+def _consume_panel_token(hass: HomeAssistant, token: str) -> dict[str, Any] | None:
+    """Validate and consume a one-time panel token."""
+    store = hass.data.get(DOMAIN, {}).get("panel_tokens", {})
+    entry = store.pop(token, None)
+    if not entry or entry["expires"] < time.time():
+        return None
+    return entry
+
+
+class RBACPanelTokenView(HomeAssistantView):
+    """Issue a one-time URL token for the RBAC config panel iframe."""
+
+    url = "/api/rbac/panel-token"
+    name = "api:rbac:panel-token"
+    requires_auth = True
+
+    async def post(self, request):
+        """Return a single-use panel URL token for the current session."""
+        try:
+            from homeassistant.components.http.const import KEY_HASS_REFRESH_TOKEN_ID
+
+            hass = request.app["hass"]
+            refresh_token_id = request[KEY_HASS_REFRESH_TOKEN_ID]
+            refresh_token = hass.auth.async_get_refresh_token(refresh_token_id)
+            if refresh_token is None:
+                return self.json({"error": "Invalid session"}, status_code=401)
+
+            access_token = hass.auth.async_create_access_token(refresh_token)
+            panel_token = _create_panel_token(hass, access_token, refresh_token_id)
+            panel_url = f"/api/rbac/panel?t={panel_token}"
+            return self.json({"token": panel_token, "url": panel_url})
+        except Exception as e:
+            _LOGGER.error("Error creating RBAC panel token: %s", e)
+            return self.json({"error": str(e)}, status_code=500)
+
+
+class RBACConfigPanelView(HomeAssistantView):
+    """Serve RBAC config HTML with optional server-injected session auth."""
+
+    url = "/api/rbac/panel"
+    name = "api:rbac:panel"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant):
+        """Initialize the panel view."""
+        self.hass = hass
+        self._www_path = os.path.join(
+            hass.config.config_dir, "custom_components", "rbac", "www"
+        )
+
+    async def get(self, request: web.Request) -> web.Response:
+        """Serve config.html, injecting auth when a valid one-time token is present."""
+        try:
+            html_path = os.path.join(self._www_path, "config.html")
+            if not os.path.isfile(html_path):
+                return web.Response(status=404, text="Config page not found")
+
+            def _read_html() -> str:
+                with open(html_path, "r", encoding="utf-8") as handle:
+                    return handle.read()
+
+            html = await self.hass.async_add_executor_job(_read_html)
+            panel_token = request.query.get("t")
+            if panel_token:
+                auth_data = _consume_panel_token(self.hass, panel_token)
+                if auth_data:
+                    auth_payload = {
+                        "access_token": auth_data["access_token"],
+                        "token_type": "Bearer",
+                    }
+                    if auth_data.get("refresh_token"):
+                        auth_payload["refresh_token"] = auth_data["refresh_token"]
+                    auth_json = json.dumps(auth_payload)
+                    inject = (
+                        "<script>"
+                        f"window.__RBAC_PRELOADED_AUTH={auth_json};"
+                        "try{"
+                        'localStorage.setItem("hassTokens",JSON.stringify(window.__RBAC_PRELOADED_AUTH));'
+                        'sessionStorage.setItem("hassTokens",JSON.stringify(window.__RBAC_PRELOADED_AUTH));'
+                        'window.dispatchEvent(new Event("rbac-auth-ready"));'
+                        "}catch(e){}"
+                        "</script>"
+                    )
+                    html = html.replace("<head>", f"<head>{inject}", 1)
+
+            return web.Response(
+                text=html,
+                content_type="text/html",
+                headers={"Cache-Control": "no-cache"},
+            )
+        except Exception as e:
+            _LOGGER.error("Error serving RBAC config panel: %s", e)
+            return web.Response(status=500, text="Internal server error")
+
+
 class RBACFrontendBlockingView(HomeAssistantView):
     """View to get frontend blocking configuration for current user."""
     
@@ -1465,6 +1584,7 @@ class RBACStaticView(HomeAssistantView):
                 headers["Content-Type"] = "text/css"
             elif file_path.endswith('.html'):
                 headers["Content-Type"] = "text/html"
+                headers["Cache-Control"] = "no-cache"
             
             return web.Response(body=content, headers=headers)
             
@@ -1476,4 +1596,5 @@ class RBACStaticView(HomeAssistantView):
 async def async_setup_static_routes(hass: HomeAssistant) -> None:
     """Set up static file serving routes."""
     hass.http.register_view(RBACStaticView(hass))
+    hass.http.register_view(RBACConfigPanelView(hass))
     _LOGGER.info("RBAC static file serving routes registered")

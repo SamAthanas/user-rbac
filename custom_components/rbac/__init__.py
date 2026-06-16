@@ -29,7 +29,7 @@ class RBACConfigURLSensor(SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_config_url"
         self._attr_icon = "mdi:web"
         self._attr_device_class = "url"
-        self._attr_native_value = f"{base_url}/api/rbac/static/config.html" if base_url else "/api/rbac/static/config.html"
+        self._attr_native_value = f"{base_url}/api/rbac/panel" if base_url else "/api/rbac/panel"
 
 
 async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
@@ -122,8 +122,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     user_count = len(access_config.get("users", {}))
     _LOGGER.info(f"RBAC Middleware initialized successfully with {user_count} configured users")
     
-    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACDenyLogView, RBACTemplateEvaluateView, RBACFrontendBlockingView, RBACYamlEditorView
-    
+    from .services import RBACConfigView, RBACUsersView, RBACDomainsView, RBACEntitiesView, RBACServicesView, RBACCurrentUserView, RBACSensorsView, RBACDenyLogView, RBACTemplateEvaluateView, RBACPanelTokenView, RBACFrontendBlockingView, RBACYamlEditorView
+    from homeassistant.components.frontend import add_extra_js_url
+
+    add_extra_js_url(hass, "/api/rbac/static/iframe-auth-relay.js", es5=True)
+    hass.data.setdefault(DOMAIN, {})["iframe_auth_relay_registered"] = True
+
     hass.http.register_view(RBACConfigView())
     hass.http.register_view(RBACUsersView())
     hass.http.register_view(RBACDomainsView())
@@ -133,6 +137,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.http.register_view(RBACSensorsView())
     hass.http.register_view(RBACDenyLogView())
     hass.http.register_view(RBACTemplateEvaluateView())
+    hass.http.register_view(RBACPanelTokenView())
     hass.http.register_view(RBACFrontendBlockingView())
     hass.http.register_view(RBACYamlEditorView())
     
@@ -143,17 +148,33 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def _setup_entry_resources(hass: HomeAssistant, entry) -> None:
+    """Restore config-entry resources after load or reload."""
+    from homeassistant.components.frontend import add_extra_js_url
+
+    if entry.options.get("show_sidebar_panel", True):
+        await _register_sidebar_panel(hass)
+
+    if not hass.data.get(DOMAIN, {}).get("iframe_auth_relay_registered"):
+        add_extra_js_url(hass, "/api/rbac/static/iframe-auth-relay.js", es5=True)
+        hass.data[DOMAIN]["iframe_auth_relay_registered"] = True
+
+    await _setup_rbac_device(hass, entry)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     """Set up the RBAC middleware component from a config entry."""
     _LOGGER.info("Setting up RBAC Middleware from config entry")
     
     config_data = entry.data if entry.data else {}
-    
-    await _setup_rbac_device(hass, entry)
-    
+
     entry.async_on_unload(entry.add_update_listener(async_update_options))
-    
-    return await async_setup(hass, config_data)
+
+    if not await async_setup(hass, config_data):
+        return False
+
+    await _setup_entry_resources(hass, entry)
+    return True
 
 
 async def async_update_options(hass: HomeAssistant, entry) -> None:
@@ -176,7 +197,14 @@ async def async_update_options(hass: HomeAssistant, entry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     """Unload RBAC config entry."""
     _LOGGER.info("Unloading RBAC Middleware")
-    
+
+    if hass.data.get(DOMAIN, {}).get("iframe_auth_relay_registered"):
+        try:
+            from homeassistant.components.frontend import remove_extra_js_url
+            remove_extra_js_url(hass, "/api/rbac/static/iframe-auth-relay.js")
+        except Exception as e:
+            _LOGGER.debug("Could not remove RBAC iframe auth relay script: %s", e)
+
     try:
         from homeassistant.components.frontend import async_remove_panel
         await async_remove_panel(hass, "rbac-config")
@@ -1173,7 +1201,7 @@ async def _register_sidebar_panel(hass: HomeAssistant):
                 sidebar_icon="mdi:shield-account",
                 frontend_url_path="rbac-config",
                 config={
-                    "url": "/api/rbac/static/config.html",
+                    "url": "/api/rbac/panel",
                     "title": "RBAC Configuration"
                 },
                 require_admin=True

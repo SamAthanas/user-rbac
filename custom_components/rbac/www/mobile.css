@@ -1,0 +1,212 @@
+/* RBAC config UI — mobile / narrow WebView fixes (Companion app, phones) */
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+body {
+  -webkit-text-size-adjust: 100%;
+}
+
+#app {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+#app .ant-layout-content {
+  padding: 12px !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* Page header: stack title and user menu on small screens */
+@media (max-width: 768px) {
+  #app .ant-layout-content > div:first-child {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 16px !important;
+    padding: 16px !important;
+  }
+
+  #app .ant-layout-content > div:first-child > div:first-child p {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  #app .ant-layout-content > div:first-child > div:last-child {
+    width: 100%;
+    justify-content: space-between !important;
+    flex-wrap: wrap;
+    gap: 12px !important;
+  }
+
+  #app .ant-layout-content > div:first-child h1 {
+    font-size: 1.25rem !important;
+    line-height: 1.3 !important;
+  }
+}
+
+/* Avatar: keep profile images circular */
+.ant-avatar {
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  flex-shrink: 0;
+}
+
+.ant-avatar-image,
+.ant-avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 50% !important;
+}
+
+/* User assignment cards */
+@media (max-width: 768px) {
+  .user-assignments-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .user-card-content,
+  .role-selector-container {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .role-selector-container.ant-space,
+  .role-selector-container .ant-space {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 12px !important;
+  }
+
+  .role-selector-container .ant-space-item,
+  .role-selector-container .ant-space-item:last-child {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .user-card-role-selector {
+    margin-left: 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* Ant Design grid rows */
+@media (max-width: 768px) {
+  .ant-row {
+    row-gap: 12px !important;
+  }
+
+  .ant-col {
+    max-width: 100% !important;
+  }
+}
+
+/* Form controls */
+.ant-select,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-picker {
+  max-width: 100% !important;
+}
+
+@media (max-width: 768px) {
+  .ant-select {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .ant-select-selector {
+    min-width: 0 !important;
+  }
+}
+
+/* Collapse section headers */
+.ant-collapse-header {
+  flex-wrap: wrap !important;
+  align-items: flex-start !important;
+  gap: 8px;
+}
+
+.ant-collapse-header-text {
+  flex: 1 1 auto !important;
+  min-width: 0;
+}
+
+.ant-collapse-extra {
+  margin-inline-start: 0 !important;
+}
+
+/* Tables and code editors */
+.ant-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+.ant-table {
+  min-width: 0;
+}
+
+.cm-editor,
+.cm-scroller,
+textarea.ant-input {
+  max-width: 100% !important;
+}
+
+/* Cards and alerts */
+.ant-card,
+.ant-alert {
+  max-width: 100%;
+}
+
+.ant-card-body {
+  padding: 12px !important;
+}
+
+/* Modals */
+@media (max-width: 768px) {
+  .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+    padding-bottom: 0;
+  }
+
+  .ant-modal-body {
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+}
+
+/* Buttons in toolbars */
+@media (max-width: 768px) {
+  .ant-space-horizontal {
+    flex-wrap: wrap !important;
+  }
+
+  .ant-btn {
+    white-space: normal;
+    height: auto;
+    min-height: 32px;
+  }
+}
+
+/* Tab / segment controls */
+.ant-tabs-nav {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 480px) {
+  #app .ant-layout-content > div:first-child .ant-dropdown-trigger > div {
+    flex-wrap: wrap;
+    max-width: calc(100vw - 80px);
+  }
+}

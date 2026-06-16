@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>RBAC Configuration</title>
     <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
+    <link rel="stylesheet" href="/api/rbac/static/index.css?v=1">
+    <link rel="stylesheet" href="/api/rbac/static/mobile.css?v=1">
     <style>
         * {
             margin: 0;
@@ -60,7 +62,159 @@
             margin: 20px 0;
         }
     </style>
-  <script type="module" crossorigin src="/api/rbac/static/config.js"></script>
+  <script>
+    (function () {
+      "use strict";
+      var ORIGIN = window.location.origin;
+
+      function hasAuth() {
+        try {
+          return !!(
+            window.__RBAC_PRELOADED_AUTH ||
+            localStorage.getItem("hassTokens") ||
+            sessionStorage.getItem("hassTokens")
+          );
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function needsPanelToken() {
+        return (
+          window.location.pathname.endsWith("/api/rbac/panel") &&
+          !window.location.search.includes("t=")
+        );
+      }
+
+      function requestPanelToken() {
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "rbac-panel-token-request" }, ORIGIN);
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      window.addEventListener("message", function (event) {
+        if (event.origin !== ORIGIN || !event.data) {
+          return;
+        }
+        if (event.data.type === "rbac-panel-redirect" && event.data.url) {
+          window.location.replace(event.data.url);
+        }
+      });
+
+      if (window.__RBAC_PRELOADED_AUTH) {
+        try {
+          localStorage.setItem(
+            "hassTokens",
+            JSON.stringify(window.__RBAC_PRELOADED_AUTH)
+          );
+        } catch (e) {
+          /* ignore */
+        }
+      }
+
+      if (needsPanelToken()) {
+        requestPanelToken();
+        var tokenAttempts = 0;
+        var tokenTimer = window.setInterval(function () {
+          requestPanelToken();
+          if (!needsPanelToken() || ++tokenAttempts >= 120) {
+            window.clearInterval(tokenTimer);
+          }
+        }, 250);
+      }
+
+      var originalFetch = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        var url = typeof input === "string" ? input : (input && input.url) || "";
+        var method = (
+          (init && init.method) ||
+          (typeof input !== "string" && input.method) ||
+          "GET"
+        ).toUpperCase();
+
+        if (url.endsWith("/auth/token") && method === "GET") {
+          var raw =
+            localStorage.getItem("hassTokens") ||
+            sessionStorage.getItem("hassTokens");
+          if (raw) {
+            var tokens = JSON.parse(raw);
+            if (tokens.refresh_token) {
+              var body = new URLSearchParams({
+                grant_type: "refresh_token",
+                refresh_token: tokens.refresh_token,
+              });
+              var response = await originalFetch("/auth/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: body.toString(),
+                credentials: "same-origin",
+              });
+              if (response.ok) {
+                return response;
+              }
+            }
+            if (tokens.access_token) {
+              return new Response(
+                JSON.stringify({
+                  access_token: tokens.access_token,
+                  token_type: "Bearer",
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } }
+              );
+            }
+          }
+          return new Response(JSON.stringify({ error: "not_authenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return originalFetch(input, init);
+      };
+
+      function loadConfig() {
+        if (window.__rbacConfigLoaded) {
+          return;
+        }
+        window.__rbacConfigLoaded = true;
+        var script = document.createElement("script");
+        script.type = "module";
+        script.crossOrigin = "";
+        script.src = "/api/rbac/static/config.js";
+        document.head.appendChild(script);
+      }
+
+      function maybeLoad() {
+        if (hasAuth()) {
+          loadConfig();
+          return true;
+        }
+        return false;
+      }
+
+      window.addEventListener("rbac-auth-ready", loadConfig);
+
+      if (!maybeLoad()) {
+        var app = document.getElementById("app");
+        if (app) {
+          app.innerHTML =
+            '<div class="loading">Connecting to Home Assistant...</div>';
+        }
+        var attempts = 0;
+        var timer = window.setInterval(function () {
+          if (maybeLoad()) {
+            window.clearInterval(timer);
+          } else if (++attempts >= 120) {
+            window.clearInterval(timer);
+          }
+        }, 250);
+      }
+    })();
+  </script>
 </head>
 <body>
     <div id="app"></div>
