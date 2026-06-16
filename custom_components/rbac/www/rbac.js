@@ -37,36 +37,13 @@
         }
     }
     
-    // Function to check if frontend blocking is enabled via sensor
-    function checkFrontendBlockingEnabled() {
-        try {
-            const hass = getHassObject();
-            if (!hass || !hass.states) {
-                return false;
-            }
-            
-            // Check the RBAC frontend blocking sensor
-            const sensorState = hass.states['sensor.rbac_frontend_blocking'];
-            if (sensorState && sensorState.state === 'on') {
-                console.log('🔒 RBAC Frontend Blocking is ENABLED');
-                return true;
-            } else {
-                console.log('🔓 RBAC Frontend Blocking is DISABLED');
-                return false;
-            }
-        } catch (error) {
-            console.error('RBAC: Error checking frontend blocking sensor:', error);
-            return false;
-        }
-    }
-    
     // Function to fetch blocking configuration from API
     async function fetchBlockingConfig() {
         try {
             const hass = getHassObject();
             if (!hass) {
                 console.error('RBAC: No hass object available');
-                return;
+                return false;
             }
             
             // Get the base URL for API calls
@@ -89,36 +66,50 @@
             
             if (data && data.enabled) {
                 blockConfig = {
+                    deny_all: Boolean(data.deny_all),
                     domains: data.domains || [],
                     entities: data.entities || [],
                     services: data.services || [],
                     allowed_domains: data.allowed_domains || [],
                     allowed_entities: data.allowed_entities || []
                 };
-                
-                console.log('🔒 RBAC Blocking config loaded');
-                console.log(`   - Blocked: ${blockConfig.domains.length} domains, ${blockConfig.entities.length} entities`);
-                console.log(`   - Allowed: ${blockConfig.allowed_domains.length} domains, ${blockConfig.allowed_entities.length} entities`);
-            } else {
-                console.log('🔓 RBAC Frontend blocking disabled or no restrictions');
-                blockConfig = {
-                    domains: [],
-                    entities: [],
-                    services: [],
-                    allowed_domains: [],
-                    allowed_entities: []
-                };
+
+                const hasRestrictions = blockConfig.deny_all
+                    || blockConfig.entities.length > 0
+                    || blockConfig.domains.length > 0
+                    || blockConfig.allowed_entities.length > 0
+                    || blockConfig.allowed_domains.length > 0;
+
+                if (hasRestrictions) {
+                    console.log('🔒 RBAC Blocking config loaded');
+                    console.log(`   - Blocked: ${blockConfig.domains.length} domains, ${blockConfig.entities.length} entities`);
+                    console.log(`   - Allowed: ${blockConfig.allowed_domains.length} domains, ${blockConfig.allowed_entities.length} entities`);
+                    return true;
+                }
             }
-        } catch (error) {
-            console.error('RBAC: Error fetching blocking config:', error);
-            // Fallback to empty config on error
+
+            console.log('🔓 RBAC Frontend blocking disabled or no restrictions for this user');
             blockConfig = {
+                deny_all: false,
                 domains: [],
                 entities: [],
                 services: [],
                 allowed_domains: [],
                 allowed_entities: []
             };
+            return false;
+        } catch (error) {
+            console.error('RBAC: Error fetching blocking config:', error);
+            // Fallback to empty config on error
+            blockConfig = {
+                deny_all: false,
+                domains: [],
+                entities: [],
+                services: [],
+                allowed_domains: [],
+                allowed_entities: []
+            };
+            return false;
         }
     }
     
@@ -146,6 +137,11 @@
         
         // Check if domain is blocked
         if (blockConfig.domains.includes(domain)) {
+            return true;
+        }
+
+        // deny_all roles: block everything not explicitly allowed
+        if (blockConfig.deny_all) {
             return true;
         }
         
@@ -310,17 +306,14 @@
         }
         
         try {
-            // Check if frontend blocking is enabled
-            frontendBlockingEnabled = checkFrontendBlockingEnabled();
+            // Load per-user blocking config from the RBAC API
+            frontendBlockingEnabled = await fetchBlockingConfig();
             
             if (!frontendBlockingEnabled) {
                 console.log('🔓 RBAC Frontend blocking disabled');
                 patched = true; // Mark as patched to prevent re-initialization
                 return;
             }
-            
-            // Fetch blocking configuration
-            await fetchBlockingConfig();
             
             // Apply patches
             patchQuickBar();
@@ -336,18 +329,7 @@
     
     // Function to reinitialize when hass updates
     function setupHassUpdateListener() {
-        const hass = getHassObject();
-        if (hass && hass.connection) {
-            // Listen for state changes, particularly the RBAC sensor
-            hass.connection.subscribeEvents((event) => {
-                if (event.data && event.data.entity_id === 'sensor.rbac_frontend_blocking') {
-                    console.log('🔒 RBAC sensor changed, reinitializing...');
-                    patched = false; // Allow re-initialization
-                    setTimeout(initializeRBAC, 100);
-                }
-            }, 'state_changed');
-            
-        }
+        // Blocking config is loaded once on startup via the RBAC API.
     }
     
     // Initialize when DOM is ready

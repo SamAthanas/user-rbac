@@ -4,6 +4,7 @@ enabled: true
 show_notifications: true
 send_event: false
 frontend_blocking_enabled: false
+state_api_filter_enabled: true
 log_deny_list: false
 allow_chained_actions: false
 last_rejection: Never

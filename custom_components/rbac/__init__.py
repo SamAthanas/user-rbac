@@ -49,6 +49,7 @@ async def _load_access_control_config(hass: HomeAssistant) -> Dict[str, Any]:
                 "show_notifications": True,
                 "send_event": False,
                 "frontend_blocking_enabled": False,
+                "state_api_filter_enabled": True,
                 "log_deny_list": False,
                 "allow_chained_actions": False,
                 "last_rejection": "Never",
@@ -102,14 +103,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _LOGGER.info("Setting up RBAC Middleware from configuration.yaml")
     
     access_config = await _load_access_control_config(hass)
-    
+
+    if DOMAIN in hass.data and hass.data[DOMAIN].get("setup_complete"):
+        hass.data[DOMAIN]["access_config"] = access_config
+        from .state_filter import clear_visibility_cache
+
+        clear_visibility_cache(hass)
+        _LOGGER.warning("RBAC access config refreshed (setup already complete)")
+        return True
+
     hass.data[DOMAIN] = {
         "access_config": access_config,
-        "original_async_call": None
+        "original_async_call": None,
     }
-    
+
     hass.data[DOMAIN]["original_async_call"] = hass.services.async_call
-    
+
     _patch_service_registry(hass)
     
     from . import services
@@ -139,7 +148,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _LOGGER.info("Registered RBAC API endpoints")
     
     await _register_sidebar_panel(hass)
-    
+
+    # Filter websocket get_states, REST /api/states, and entity registry by RBAC role
+    from .state_filter import setup_state_api_filter
+
+    setup_state_api_filter(hass)
+
+    hass.data[DOMAIN]["setup_complete"] = True
     return True
 
 
@@ -148,12 +163,14 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     _LOGGER.info("Setting up RBAC Middleware from config entry")
     
     config_data = entry.data if entry.data else {}
-    
-    await _setup_rbac_device(hass, entry)
-    
+
     entry.async_on_unload(entry.add_update_listener(async_update_options))
-    
-    return await async_setup(hass, config_data)
+
+    if not await async_setup(hass, config_data):
+        return False
+
+    await _setup_rbac_device(hass, entry)
+    return True
 
 
 async def async_update_options(hass: HomeAssistant, entry) -> None:
@@ -1040,6 +1057,8 @@ async def reload_access_config(hass: HomeAssistant) -> bool:
     try:
         access_config = await _load_access_control_config(hass)
         hass.data[DOMAIN]["access_config"] = access_config
+        from .state_filter import clear_visibility_cache
+        clear_visibility_cache(hass)
         _LOGGER.info("Access control configuration reloaded successfully")
         return True
     except Exception as e:
